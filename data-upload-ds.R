@@ -19,7 +19,7 @@ originals.dest <- "C:\\Users\\EEdson\\Desktop\\MOJN\\Photo_Originals"
 # photo.dest <- "M:\\MONITORING\\StreamsLakes\\Data\\WY2019\\ImageData\\Lakes"
 # originals.dest <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\AGOL_STLK"
 
-db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\stlk-database-conn.csv"
+db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-database-conn.csv"
 #---------------------------#
 
 db <- list()
@@ -49,21 +49,21 @@ py.ver <- py_config()
 
 source_python("download-photos-ds.py")
 
-## Create Python dictionaries from photo and site lookups
-photo.type.dict <- py_dict(photo.types$ID, photo.types$Code)
-lake.code.dict <- py_dict(sites$ID, sites$CodeFull)
+## Create Python dictionaries from photo and site lookups- don't need these because the site coddes are in the visit ID, and there are no photo types
+#photo.type.dict <- py_dict(photo.types$ID, photo.types$Code)
+#site.code.dict <- py_dict(sites$ID, sites$Code)
 
 
 ## Download photos from internal camera table
 if(nrow(cameraInternal) == 0){
   print("There are no internal camera images")
 }else{
+  folder <- "InternalCamera"
   photo.table <- paste(gdb.path, "InternalCamera__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "InternalCamera", sep = "\\")
   internalCamera <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, photoCodeDict = photo.type.dict, 
-                                                 lakeCodeDict = lake.code.dict)
+                                                 originalsLocation = originals.dest, folder = folder)
   internalCamera <- as_tibble(internalCamera)
   internalCamera$VisitGUID <- str_remove_all(internalCamera$VisitGUID, "\\{|\\}")
   internalCamera$GlobalID <- str_remove_all(internalCamera$GlobalID, "\\{|\\}")
@@ -73,12 +73,12 @@ if(nrow(cameraInternal) == 0){
 if(nrow(additionalPhotosInt) == 0){
   print("There are no additional internal photo images")
 }else{
+  folder <- "AdditionalInternalPhotos"
   photo.table <- paste(gdb.path, "AdditionalPhotoInternal__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "AdditionalPhotoInternal", sep = "\\")
   AdditionalPhotoInternal <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, photoCodeDict = photo.type.dict, 
-                                                 lakeCodeDict = lake.code.dict)
+                                                 originalsLocation = originals.dest, folder = folder)
   AdditionalPhotoInternal <- as_tibble(AdditionalPhotoInternal)
   AdditionalPhotoInternal$VisitGUID <- str_remove_all(AdditionalPhotoInternal$VisitGUID, "\\{|\\}")
   AdditionalPhotoInternal$GlobalID <- str_remove_all(AdditionalPhotoInternal$GlobalID, "\\{|\\}")
@@ -88,35 +88,35 @@ if(nrow(additionalPhotosInt) == 0){
 if(nrow(invImage) == 0){
   print("There are no inv image repeat images")
 }else{
+  folder <- "InvasiveInternalPhotos"
   photo.table <- paste(gdb.path, "InvImageRepeat__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "InvImageRepeat", sep = "\\")
   InvImageRepeat <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, photoCodeDict = photo.type.dict, 
-                                                 lakeCodeDict = lake.code.dict)
+                                                 originalsLocation = originals.dest, folder = folder)
   InvImageRepeat <- as_tibble(InvImageRepeat)
   InvImageRepeat$VisitGUID <- str_remove_all(InvImageRepeat$VisitGUID, "\\{|\\}")
   InvImageRepeat$GlobalID <- str_remove_all(InvImageRepeat$GlobalID, "\\{|\\}")
 }
 
 
-## Download photos from repeat photos internal table
+## Download photos from repeat photos internal table- need to figure out how to get the repeat type code for these
 if(nrow(repeatPhotosInt) == 0){
   print("There are no repeat photos internal images")
 }else{
-  photo.table <- paste(gdb.path, "RepeatPhotosInternal__ATTACH", sep = "\\")
-  photo.data <- paste(gdb.path, "RepeatPhotosInternal", sep = "\\")
+  folder <- "RepeatInternalPhotos"
+  photo.table <- paste(gdb.path, "RepeatPhotos_Internal__ATTACH", sep = "\\")
+  photo.data <- paste(gdb.path, "RepeatPhotos_Internal", sep = "\\")
   RepeatPhotosInternal <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, photoCodeDict = photo.type.dict, 
-                                                 lakeCodeDict = lake.code.dict)
+                                                 originalsLocation = originals.dest, folder = folder)
   RepeatPhotosInternal <- as_tibble(RepeatPhotosInternal)
   RepeatPhotosInternal$VisitGUID <- str_remove_all(RepeatPhotosInternal$VisitGUID, "\\{|\\}")
   RepeatPhotosInternal$GlobalID <- str_remove_all(RepeatPhotosInternal$GlobalID, "\\{|\\}")
 }
 ##################################################################################################
 
-#upload table data
+## upload table data
 
 ## Visit table -works!
 db$Visit <- visit %>%
@@ -137,9 +137,7 @@ db$Visit <- visit %>%
 
 visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)  # Insert into Visit table in database
 
-## TODO repeats. this is repeat photos and need to fix the photo script first
-
-## TODO Invasive Plants
+## TODO repeats. this is repeat photos anot sure how to tie ext and int photos together
 
 ## Visit Personnel table -Works!
 db$VisitPersonnel <- observers %>%
@@ -149,7 +147,6 @@ db$VisitPersonnel <- observers %>%
          PersonnelID = FieldCrew) %>%
   mutate(PersonnelRoleID = 5)  # Field crew
 personnel.keys <- uploadData(db$VisitPersonnel, "data.VisitPersonnel", conn, keep.guid = FALSE, cols.key = list(VisitID = integer(), PersonnelID = integer(), PersonnelRoleID = integer()))
-
 
 ## sensor deployment table - works!
 
@@ -225,7 +222,7 @@ db$DischargeVol <- visit %>%
 
 dischargeVOL.keys <-uploadData(db$DischargeVol , "data.DischargeVolumetricObservation", conn, keep.guid = FALSE)
 
-## Spring Brook dimensions 
+## Spring Brook dimensions -works!
 
 db$SpringbrookDim <- visit %>% 
   inner_join(dischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
@@ -373,7 +370,7 @@ WQ_tempC.keys <-uploadData(db$WQ_tempC, "data.WaterQualityTemperature", conn, ke
 
 
 
-## Disturbance Activity table - works
+## Disturbance Activity table - works!
 db$DisturbanceActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   select(VisitID = ID,
@@ -417,7 +414,7 @@ db$WildlifeActivity <- visit %>%
 WildlifeActivity.keys <-uploadData(db$WildlifeActivity, "data.WildlifeActivity", conn, keep.guid = FALSE)
 
 
-## wildlife observation table _ check with Sarah about the mutate before running, but it should work fine
+## wildlife observation table _ check with Sarah about the mutate to replace missing values before running, but it should work fine
 db$WildlifeObservation <- wildlife %>% 
   inner_join(WildlifeActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
   select(WildlifeActivityID= ID,
@@ -448,7 +445,7 @@ db$riparianVegActivity <- visit %>%
 riparianVegActivity.keys <-uploadData(db$riparianVegActivity, "data.RiparianVegetationActivity", conn, keep.guid = FALSE)
 
 
-## riparian veg observation table - work on this need to confer with Sarah
+## riparian veg observation table - should work but need to confer with Sarah
 
 tempveg1<- visit %>% 
   inner_join(riparianVegActivity.keys, by = c("globalid" = "GlobalID")) %>% 
@@ -481,7 +478,7 @@ tempVeg2 <- gather(tempveg1, "LifeFormName", "Rank", 5:15) %>%
 
 db$riparianVegObservation <- tempVeg2  %>% 
   select(-LifeFormName) %>% 
-  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) # ask Sarah where these should con=me from as there is no taxon ID in this table
+  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) # ask Sarah where these should come from as there is no taxon ID in this table
 
 riparianVegObservation.keys <-uploadData(db$riparianVegObservation , "data.RiparianVegetationObservation", conn, keep.guid = FALSE)
 ## there is a non matching record between the visit table and veg repeat table that is creating a null in the table for import - how should we handle these kinds of errors?
@@ -510,25 +507,63 @@ db$InvasiveObservation <- invasive %>%
          GlobalID = globalid,
          TaxonID = InvasiveSpecies,
          RiparianVegetationBufferID = RiparianVegBuffer) %>% 
-  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) # ask Sarah where these should con=me from as there is no taxon ID in this table
+  #mutate_at(c(3:4), ~replace(., is.na(.), 1)) %>% # delete- only for testingt
+  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) # ask Sarah where these should come from as there is no taxon ID in this table
 ## missing a species notes field? Also utm's, the invasive table is a point layer but I cant see the coords in the table.
+
 
 InvasiveObservation.keys <-uploadData(db$InvasiveObservation, "data.InvasivesObservation", conn, keep.guid = FALSE)
 # there is a null value in the invaives table caused by an empty species and taxon ID field in AGOl. How should we handle these?
 
-## Invasive Photo table
+
+
+## Invasive Photo (external) table
+db$InvasivePhotos <- extCameraFilesInv %>% 
+  inner_join(InvasiveObservation.keys, by = c("parentglobalid" = "GlobalID")) %>% 
+  select(InvasivesObservationID= ID,
+         GlobalID = globalid,
+         PhotoFileNumber = ExternalFileNumbersInv)
+
+InvasivePhotos.keys <-uploadData(db$InvasivePhotos, "data.InvasivesPhoto", conn, keep.guid = FALSE)
 
 
 
+## Photo Activity table - works! (is this for external photos only?  or all visits regardless?)
+db$PhotoActivity <- visit %>% 
+  inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>%
+  filter(UsingInternalCamera == "N") %>% 
+  select( VisitID = ID,
+          GlobalID = globalid,
+          CameraID = Camera,
+          CameraCardID = CameraCard) %>% 
+  mutate(DataProcessingLevelID = 1)  # Raw
+
+PhotoActivity.keys <-uploadData(db$PhotoActivity, "data.PhotoActivity", conn, keep.guid = FALSE)
+names(PhotoActivity.keys) <- c("PhotoActivityID", "VisitGlobalID")
+
+## Photo table ( this looks like its for internal photos downloaded to files, rather than external photo file numbers?)
+
+# invasive internal photos
+photo1 <- InvImageRepeat %>% 
+  mutate(VisitGUID = tolower(VisitGUID),
+         GlobalID = tolower(GlobalID)) %>%
+  inner_join(PhotoActivity.keys, by = c("VisitGUID" = "VisitGlobalID")) %>% 
+  inner_join(visit, by = c("VisitGUID" = "globalid")) %>% 
+  select(PhotoActivityID,
+         StartDateTime,
+         OriginalFilePath,
+         RenamedFilePath,
+         GPSUnit = GPS) %>% 
+  mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"))
 
 
-
-
-
-
-
-
-
+# where are these?
+# PhotoDescriptionCodeID = PhotoTypeID,
+# IsLibraryPhotoID = IsLibrary,  
+# X_coord = x,
+# Y_coord = y,
+# WKID = wkid,
+# Notes = PhotoNotes)
 
 
 #################################################### from STLK script left for now but will remove ######
