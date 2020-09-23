@@ -1,12 +1,13 @@
 #################################################################
-## Purpose: Read tabular data from the desert springs AGOL and
-##          prepare for import into the desert springs SQL database
+## Purpose: Read tabular data from the desert springs ArcGIS Online (AGOL)
+##          and create dataframes that better match the SQL database. 
+##          Must use before data-upload-ds.R
 ## Date: 09/09/2020
 ## R version written with: 4.0.2
-## Libraries and versions used: rstudioapi 0.11
+## Libraries and versions used: libraries specified in Main.R. Additional libraries for this R script: rstudioapi 0.11 
 ################################################################
 
-## Get a token with a headless account
+## Get a token with a headless account - Warning! You need to know the password!
 token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",
                    body = list(username = rstudioapi::showPrompt("Username", "Please enter your AGOL username", default = "mojn_hydro"),
                                password = rstudioapi::askForPassword("Please enter your AGOL password"),
@@ -15,10 +16,11 @@ token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",
                    encode = "form")
 agol_token <- fromJSON(content(token_resp, type="text", encoding = "UTF-8"))
 
-service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_815059c20fd448628dc23441f7a7c473/FeatureServer"
+#service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_815059c20fd448628dc23441f7a7c473/FeatureServer"
+service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_71090c1d234d4f42aa56c48472ce3aa7/FeatureServer"
 
-
-## Get desert springs spring visit data
+## Get AGOL desert springs (DS) spring visit point layer: MOJN_DS_SpringVisit
+## create visit dataframe
 resp.visit <- GET(paste0(service_url, "/0/query"),
                   query = list(where="1=1",
                                outFields="*",
@@ -33,7 +35,8 @@ visit <- visit$features$attributes %>%
   mutate(DateTime = as.POSIXct(DateTime/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
   rename(StartDateTime = DateTime)
 
-## get DS repeats data
+## get AGOL DS repeats point layer: Repeats
+## create repeatPhoto dataframe
 resp.repeats <- GET(paste0(service_url, "/1/query"),
                     query = list(where="1=1",
                                  outFields="*",
@@ -46,20 +49,22 @@ repeats <- repeats$features$attributes %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS invasive plants data
-resp.invasive <- GET(paste0(service_url, "/2/query"),
+## get AGOL DS invasive plants point layer: InvasivePlants
+## create invasives dataframe
+resp.invasives <- GET(paste0(service_url, "/2/query"),
                     query = list(where="1=1",
                                  outFields="*",
                                  f="JSON",
                                  token=agol_token$token))
 
-invasive <- fromJSON(content(resp.invasive, type = "text", encoding = "UTF-8"))
-invasive <- invasive$features$attributes %>%
+invasives <- fromJSON(content(resp.invasives, type = "text", encoding = "UTF-8"))
+invasives <- invasives$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS observers table data
+## get AGOL DS observers table: Observers
+## create observers dataframe
 resp.observers <- GET(paste0(service_url, "/3/query"),
                      query = list(where="1=1",
                                   outFields="*",
@@ -72,55 +77,59 @@ observers <- observers$features$attributes %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS sensor retrieval table data
-resp.sensor <- GET(paste0(service_url, "/4/query"),
+
+## get AGOL DS sensor retrieval table: SensorRetrieval
+## create sensorRetrieval dataframe
+resp.sensorRetrieval <- GET(paste0(service_url, "/4/query"),
                       query = list(where="1=1",
                                    outFields="*",
                                    f="JSON",
                                    token=agol_token$token))
 
-sensor <- fromJSON(content(resp.sensor, type = "text", encoding = "UTF-8"))
-sensor <- sensor$features$attributes %>%
+sensorRetrieval <- fromJSON(content(resp.sensorRetrieval, type = "text", encoding = "UTF-8"))
+sensorRetrieval <- sensorRetrieval$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS repeat photos-internal table data
-resp.repeatPhotosInt <- GET(paste0(service_url, "/5/query"),
+
+## get AGOL DS repeat photos-internal table: RepeatPhotos_Internal
+## create repeatsInt dataframe
+resp.repeatsInt <- GET(paste0(service_url, "/5/query"),
                    query = list(where="1=1",
                                 outFields="*",
                                 f="JSON",
                                 token=agol_token$token))
 
-repeatPhotosInt <- fromJSON(content(resp.repeatPhotosInt, type = "text", encoding = "UTF-8"))
-repeatPhotosInt <- repeatPhotosInt$features$attributes %>%
+repeatsInt <- fromJSON(content(resp.repeatsInt, type = "text", encoding = "UTF-8"))
+repeatsInt <- repeatsInt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
 
-## get DS repeat photos-external table data
-resp.repeatPhotosExt <- GET(paste0(service_url, "/6/query"),
+## get AGOL DS repeat photos-external table: RepeatPhotos_External
+## create repeatsExt dataframe
+resp.repeatsExt <- GET(paste0(service_url, "/6/query"),
                           query = list(where="1=1",
                                        outFields="*",
                                        f="JSON",
                                        token=agol_token$token))
 
-
-repeatPhotosExt <- fromJSON(content(resp.repeatPhotosExt, type = "text", encoding = "UTF-8"))
-repeatPhotosExt <- repeatPhotosExt$features$attributes %>%
+repeatsExt <- fromJSON(content(resp.repeatsExt, type = "text", encoding = "UTF-8"))
+repeatsExt <- repeatsExt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
 
-## get DS fill time table data
+## get AGOL DS fill time table: FillTime
+## create fillTime dataframe
 resp.fillTime <- GET(paste0(service_url, "/7/query"),
                           query = list(where="1=1",
                                        outFields="*",
                                        f="JSON",
                                        token=agol_token$token))
-
 
 fillTime <- fromJSON(content(resp.fillTime, type = "text", encoding = "UTF-8"))
 fillTime <- fillTime$features$attributes %>%
@@ -128,27 +137,29 @@ fillTime <- fillTime$features$attributes %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Flow Mod Types table data
-resp.flowMod <- GET(paste0(service_url, "/8/query"),
+
+## get AGOL DS Flow Mod Types table: FlowModTypes
+## create disturbanceFlowMod dataframe
+resp.disturbanceFlowMod <- GET(paste0(service_url, "/8/query"),
                      query = list(where="1=1",
                                   outFields="*",
                                   f="JSON",
                                   token=agol_token$token))
 
-
-flowMod <- fromJSON(content(resp.flowMod, type = "text", encoding = "UTF-8"))
-flowMod <- flowMod$features$attributes %>%
+disturbanceFlowMod <- fromJSON(content(resp.disturbanceFlowMod, type = "text", encoding = "UTF-8"))
+disturbanceFlowMod <- disturbanceFlowMod$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Wildlife repeat table data
+
+## get AGOL DS Wildlife repeat table: WildlifeRepeat
+## create wildlife dataframe
 resp.wildlife <- GET(paste0(service_url, "/9/query"),
                     query = list(where="1=1",
                                  outFields="*",
                                  f="JSON",
                                  token=agol_token$token))
-
 
 wildlife <- fromJSON(content(resp.wildlife, type = "text", encoding = "UTF-8"))
 wildlife <- wildlife$features$attributes %>%
@@ -156,85 +167,89 @@ wildlife <- wildlife$features$attributes %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Veg image repeat table data
-resp.vegImage <- GET(paste0(service_url, "/10/query"),
+
+## get AGOL DS riparian Vegetation image repeat table: VegImageRepeat
+## create riparianVeg dataframe
+resp.riparianVeg  <- GET(paste0(service_url, "/10/query"),
                      query = list(where="1=1",
                                   outFields="*",
                                   f="JSON",
                                   token=agol_token$token))
 
-
-vegImage <- fromJSON(content(resp.vegImage, type = "text", encoding = "UTF-8"))
-vegImage <- vegImage$features$attributes %>%
+riparianVeg  <- fromJSON(content(resp.riparianVeg, type = "text", encoding = "UTF-8"))
+riparianVeg  <- riparianVeg$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Internal Camera Table data
-resp.cameraInternal <- GET(paste0(service_url, "/11/query"),
+
+## get AGOL DS riparian veg internal camera table: InternalCamera
+## create riparianVegInt dataframe
+resp.riparianVegInt <- GET(paste0(service_url, "/11/query"),
                      query = list(where="1=1",
                                   outFields="*",
                                   f="JSON",
                                   token=agol_token$token))
 
-
-cameraInternal <- fromJSON(content(resp.cameraInternal, type = "text", encoding = "UTF-8"))
-cameraInternal <- cameraInternal$features$attributes %>%
+riparianVegInt <- fromJSON(content(resp.riparianVegInt, type = "text", encoding = "UTF-8"))
+riparianVegInt <- riparianVegInt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
 
-## get DS External Camera table data
-resp.cameraExternal <- GET(paste0(service_url, "/12/query"),
+## get AGOL DS riparian veg external Camera table: ExternalCameraFiles
+## create riparianVegExt dataframe
+resp.riparianVegExt <- GET(paste0(service_url, "/12/query"),
                            query = list(where="1=1",
                                         outFields="*",
                                         f="JSON",
                                         token=agol_token$token))
 
-
-cameraExternal <- fromJSON(content(resp.cameraExternal, type = "text", encoding = "UTF-8"))
-cameraExternal <- cameraExternal$features$attributes %>%
+riparianVegExt <- fromJSON(content(resp.riparianVegExt, type = "text", encoding = "UTF-8"))
+riparianVegExt <- riparianVegExt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Inv Image repeat table data
-resp.invImage <- GET(paste0(service_url, "/13/query"),
+
+## get AGOL DS Invasive Image repeat table: InvImageRepeat
+## create invasivesInt dataframe
+resp.invasivesInt <- GET(paste0(service_url, "/13/query"),
                            query = list(where="1=1",
                                         outFields="*",
                                         f="JSON",
                                         token=agol_token$token))
 
-
-invImage <- fromJSON(content(resp.invImage, type = "text", encoding = "UTF-8"))
-invImage <- invImage$features$attributes %>%
+invasivesInt <- fromJSON(content(resp.invasivesInt, type = "text", encoding = "UTF-8"))
+invasivesInt <- invasivesInt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Inv External CAmera Files table data
-resp.extCameraFilesInv <- GET(paste0(service_url, "/14/query"),
+
+## get AGOL DS Inv External CAmera Files table: ExternalCameraFilesInv
+## create invasivesExt dataframe
+resp.invasivesExt  <- GET(paste0(service_url, "/14/query"),
                      query = list(where="1=1",
                                   outFields="*",
                                   f="JSON",
                                   token=agol_token$token))
 
-
-extCameraFilesInv <- fromJSON(content(resp.extCameraFilesInv, type = "text", encoding = "UTF-8"))
-extCameraFilesInv <- extCameraFilesInv$features$attributes %>%
+invasivesExt  <- fromJSON(content(resp.invasivesExt , type = "text", encoding = "UTF-8"))
+invasivesExt  <- invasivesExt $features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
 
-## get DS Additional Photos Files table data
+## get AGOL DS Additional Photos Files table: AdditionalPhotos2
+## create additionalPhotos dataframe
 resp.additionalPhotos<- GET(paste0(service_url, "/15/query"),
                               query = list(where="1=1",
                                            outFields="*",
                                            f="JSON",
                                            token=agol_token$token))
-
 
 additionalPhotos <- fromJSON(content(resp.additionalPhotos, type = "text", encoding = "UTF-8"))
 additionalPhotos <- additionalPhotos$features$attributes %>%
@@ -242,13 +257,14 @@ additionalPhotos <- additionalPhotos$features$attributes %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Additional Photos Internal Files table data
+
+## get AGOL DS Additional Photos Internal Files table: AdditionalPhotoInternal
+## create additionalPhotosInt dataframe
 resp.additionalPhotosInt<- GET(paste0(service_url, "/16/query"),
                             query = list(where="1=1",
                                          outFields="*",
                                          f="JSON",
                                          token=agol_token$token))
-
 
 additionalPhotosInt <- fromJSON(content(resp.additionalPhotosInt, type = "text", encoding = "UTF-8"))
 additionalPhotosInt <- additionalPhotosInt$features$attributes %>%
@@ -256,16 +272,22 @@ additionalPhotosInt <- additionalPhotosInt$features$attributes %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
 
-## get DS Additional Photos External Files table data
+
+## get AGOL DS Additional Photos External Files table: AddtionalPhotoExternal
+## create additionalPhotosExt dataframe
 resp.additionalPhotosExt<- GET(paste0(service_url, "/17/query"),
                                query = list(where="1=1",
                                             outFields="*",
                                             f="JSON",
                                             token=agol_token$token))
 
-
 additionalPhotosExt <- fromJSON(content(resp.additionalPhotosExt, type = "text", encoding = "UTF-8"))
 additionalPhotosExt <- additionalPhotosExt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
+
+
+## this line if uncommented can remove all the tem,p "resp." list files and
+## make it easier to see the tables in the global environment. can be useful for testing or modyfying the code
+# rm(list=ls(pattern="^resp."))

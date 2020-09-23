@@ -1,45 +1,62 @@
 #################################################################
-## Purpose: mport into the desert springs SQL database
+## Purpose: data munging and import into the desert springs SQL database
+##          Use after running agol-download-ds.R and utils.R
 ## Date: 09/09/2020
 ## R version written with: 4.0.2
+## Libraries and versions used: libraries specified in Main.R.
 ## Calls python script"download-photos-ArcPro.py" 
 ##      - make sure you can import arcpy before running!
 ################################################################
 
-#---------Settings----------# uncomment either the testing set or the real set 
-# set this to the location of the downloaded FDGBfrom AGOL
+#---------Variables used----------# uncomment either the testing set or the real set 
+# set this to the location of the downloaded FGDB from AGOL
 
-# test set:
-gdb.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\MOJN_DS_Test.gdb"
+# filepaths for testing import:
+gdb.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\MOJN_DS_Spring_LizzyTest.gdb"
 photo.dest <- "C:\\Users\\EEdson\\Desktop\\MOJN\\Photos_DS"
 originals.dest <- "C:\\Users\\EEdson\\Desktop\\MOJN\\Photo_Originals"
+db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-database-conn.csv"
 
-# real set:
+# filepaths for the real import:
 # gdb.path <- "M:\\MONITORING\\StreamsLakes\\Data\\WY2019\\FieldData\\Lakes_Annual\\STLK_AnnualLakeVisit_20191022.gdb"
 # photo.dest <- "M:\\MONITORING\\StreamsLakes\\Data\\WY2019\\ImageData\\Lakes"
 # originals.dest <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\AGOL_STLK"
-
-db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-database-conn.csv"
+# db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-database-conn.csv"
 #---------------------------#
 
 db <- list()
 
 ## Get Site table from database
-params <- readr::read_csv(db.params.path) %>%  #TODO: Change to real database connection after testing is done
+params <- readr::read_csv(db.params.path) %>% 
   as.list()
 params$drv <- odbc::odbc()
 conn <- do.call(pool::dbPool, params)
 sites <- dplyr::tbl(conn, dbplyr::in_schema("data", "Site")) %>%
   dplyr::collect()
 
-######################################################################################
-## Download photos using Python script
 
-# Get lookups of photo codes for photo naming
+# Get lookups of photo codes for photo naming. We need both the photo type and the photo SOP type for connecting I think. I will test both.
+
+# original photo type variable
 photo.types <- dplyr::tbl(conn, dbplyr::in_schema("ref", "PhotoDescriptionCode")) %>%
   dplyr::collect() %>%
   select(ID, Code)
+# new one that conbines photo SOP. incase we need this
+photo.types1 <- dplyr::tbl(conn, dbplyr::in_schema("ref", "PhotoDescriptionCode")) %>%
+  dplyr::collect() %>%
+  select(ID, Code, PhotoSOPID)
 
+photo.types2 <-dplyr::tbl(conn, dbplyr::in_schema("lookup", "photoSOP")) %>%
+  dplyr::collect() %>%
+  select(ID, Code)
+names(photo.types2) <- c("PhotoSOPID", "PhotoSOP_Code")
+
+photoTypes <- photo.types1 %>% 
+  left_join(photo.types2, by = "PhotoSOPID")
+
+
+######################################################################################
+## Download photos using Python script
 visit.data <- paste(gdb.path, "MOJN_DS_SpringVisit", sep = "\\")
 py.ver <- py_config()
 
@@ -49,71 +66,76 @@ py.ver <- py_config()
 
 source_python("download-photos-ds.py")
 
-## Create Python dictionaries from photo and site lookups- don't need these because the site coddes are in the visit ID, and there are no photo types
+## Create Python dictionaries from photo and site lookups- don't need these because the site coddes are in the visit ID, and there are no photo types NB trying to add the photo codes back in
 #photo.type.dict <- py_dict(photo.types$ID, photo.types$Code)
 #site.code.dict <- py_dict(sites$ID, sites$Code)
 
 
-## Download photos from internal camera table
-if(nrow(cameraInternal) == 0){
-  print("There are no internal camera images")
+## Download photos from internal camera table this is the  riparian veg internal camera - Works!
+if(nrow(riparianVegInt) == 0){
+  print("There are no Riparian Veg internal camera images")
 }else{
-  folder <- "InternalCamera"
+  photo.type.field <- "LifeFormName"
   photo.table <- paste(gdb.path, "InternalCamera__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "InternalCamera", sep = "\\")
-  internalCamera <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
+  repeat.data <- paste(gdb.path, "VegImageRepeat", sep = "\\")
+  RV_IntImage <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, repeatFeatureClass = repeat.data,
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, folder = folder)
-  internalCamera <- as_tibble(internalCamera)
-  internalCamera$VisitGUID <- str_remove_all(internalCamera$VisitGUID, "\\{|\\}")
-  internalCamera$GlobalID <- str_remove_all(internalCamera$GlobalID, "\\{|\\}")
+                                                 originalsLocation = originals.dest, photoTypeField = photo.type.field)
+  RV_IntImage <- as_tibble(RV_IntImage)
+  RV_IntImage$VisitGUID <- str_remove_all(RV_IntImage$VisitGUID, "\\{|\\}")
+  RV_IntImage$GlobalID <- str_remove_all(RV_IntImage$GlobalID, "\\{|\\}")
+  RV_IntImage$RepeatGUID <- str_remove_all(RV_IntImage$RepeatGUID, "\\{|\\}")
 }
     
-## Download photos from Additional Photo Internal table
-if(nrow(additionalPhotosInt) == 0){
-  print("There are no additional internal photo images")
-}else{
-  folder <- "AdditionalInternalPhotos"
-  photo.table <- paste(gdb.path, "AdditionalPhotoInternal__ATTACH", sep = "\\")
-  photo.data <- paste(gdb.path, "AdditionalPhotoInternal", sep = "\\")
-  AdditionalPhotoInternal <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
-                                                 visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, folder = folder)
-  AdditionalPhotoInternal <- as_tibble(AdditionalPhotoInternal)
-  AdditionalPhotoInternal$VisitGUID <- str_remove_all(AdditionalPhotoInternal$VisitGUID, "\\{|\\}")
-  AdditionalPhotoInternal$GlobalID <- str_remove_all(AdditionalPhotoInternal$GlobalID, "\\{|\\}")
-}
 
-## Download photos from Inv Image repeat table
-if(nrow(invImage) == 0){
-  print("There are no inv image repeat images")
+## Download photos from Inv Image repeat table - works! these are the invasive internal camera images
+if(nrow(invasivesInt) == 0){
+  print("There are no invasive internal camera images")
 }else{
-  folder <- "InvasiveInternalPhotos"
+  photo.type.field <- "InvasiveSpeciesCode"
   photo.table <- paste(gdb.path, "InvImageRepeat__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "InvImageRepeat", sep = "\\")
-  InvImageRepeat <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
+  repeat.data <- paste(gdb.path, "InvasivePlants", sep = "\\")
+  Inv_IntImage <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data,  repeatFeatureClass = repeat.data,
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, folder = folder)
-  InvImageRepeat <- as_tibble(InvImageRepeat)
-  InvImageRepeat$VisitGUID <- str_remove_all(InvImageRepeat$VisitGUID, "\\{|\\}")
-  InvImageRepeat$GlobalID <- str_remove_all(InvImageRepeat$GlobalID, "\\{|\\}")
+                                                 originalsLocation = originals.dest, photoTypeField = photo.type.field)
+  Inv_IntImage <- as_tibble(Inv_IntImage)
+  Inv_IntImage$VisitGUID <- str_remove_all(Inv_IntImage$VisitGUID, "\\{|\\}")
+  Inv_IntImage$GlobalID <- str_remove_all(Inv_IntImage$GlobalID, "\\{|\\}")
 }
 
 
-## Download photos from repeat photos internal table- need to figure out how to get the repeat type code for these
-if(nrow(repeatPhotosInt) == 0){
+## Download photos from repeat photos internal table- works!
+if(nrow(repeatsInt) == 0){
   print("There are no repeat photos internal images")
 }else{
-  folder <- "RepeatInternalPhotos"
+  photo.type.field <- "PhotoTypeName"
   photo.table <- paste(gdb.path, "RepeatPhotos_Internal__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "RepeatPhotos_Internal", sep = "\\")
-  RepeatPhotosInternal <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, 
+  repeat.data <- paste(gdb.path, "Repeats", sep = "\\")
+  RepeatPhotosInternal <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, repeatFeatureClass = repeat.data,
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, folder = folder)
+                                                 originalsLocation = originals.dest, photoTypeField = photo.type.field)
   RepeatPhotosInternal <- as_tibble(RepeatPhotosInternal)
   RepeatPhotosInternal$VisitGUID <- str_remove_all(RepeatPhotosInternal$VisitGUID, "\\{|\\}")
   RepeatPhotosInternal$GlobalID <- str_remove_all(RepeatPhotosInternal$GlobalID, "\\{|\\}")
 }
+
+## Download photos from Additional Photo Internal table - this needs the phototype dict as a cod is stored not the name.so it uses a differnt python code Unless we can store the name code in there too!
+if(nrow(additionalPhotosInt) == 0){
+  print("There are no additional internal photo images")
+}else{
+  photo.table <- paste(gdb.path, "AdditionalPhotoInternal__ATTACH", sep = "\\")
+  photo.data <- paste(gdb.path, "AdditionalPhotoInternal", sep = "\\")
+  AP_IntImage <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, repeatFeatureClass = repeat.data,
+                                       visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
+                                       originalsLocation = originals.dest, photoTypeField = photo.type.field)
+  AP_IntImage <- as_tibble(AP_IntImage)
+  AP_IntImage$VisitGUID <- str_remove_all(AP_IntImage$VisitGUID, "\\{|\\}")
+  AP_IntImage$GlobalID <- str_remove_all(AP_IntImage$GlobalID, "\\{|\\}")
+}
+
 ##################################################################################################
 
 ## upload table data
@@ -445,7 +467,7 @@ db$riparianVegActivity <- visit %>%
 riparianVegActivity.keys <-uploadData(db$riparianVegActivity, "data.RiparianVegetationActivity", conn, keep.guid = FALSE)
 
 
-## riparian veg observation table - should work but need to confer with Sarah
+## riparian veg observation table - should work but need to confer with Sarah We rename the fields to match the riparian veg fieldds. but 
 
 tempveg1<- visit %>% 
   inner_join(riparianVegActivity.keys, by = c("globalid" = "GlobalID")) %>% 
@@ -528,10 +550,9 @@ InvasivePhotos.keys <-uploadData(db$InvasivePhotos, "data.InvasivesPhoto", conn,
 
 
 
-## Photo Activity table - works! (is this for external photos only?  or all visits regardless?)
+## Photo Activity table - works! This is for all photos ext and int
 db$PhotoActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>%
-  filter(UsingInternalCamera == "N") %>% 
   select( VisitID = ID,
           GlobalID = globalid,
           CameraID = Camera,
