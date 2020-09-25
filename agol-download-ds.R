@@ -17,7 +17,7 @@ token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",
 agol_token <- fromJSON(content(token_resp, type="text", encoding = "UTF-8"))
 
 #service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_815059c20fd448628dc23441f7a7c473/FeatureServer"
-service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_71090c1d234d4f42aa56c48472ce3aa7/FeatureServer"
+service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_781d06dcb4bc4537b179e6aec279a2ca/FeatureServer"
 
 ## Get AGOL desert springs (DS) spring visit point layer: MOJN_DS_SpringVisit
 ## create visit dataframe
@@ -44,7 +44,8 @@ resp.repeats <- GET(paste0(service_url, "/1/query"),
                                  token=agol_token$token))
 
 repeats <- fromJSON(content(resp.repeats, type = "text", encoding = "UTF-8"))
-repeats <- repeats$features$attributes %>%
+repeats <- cbind(repeats$features$attributes, repeats$features$geometry) %>%
+  mutate(wkid = repeats$spatialReference$wkid) %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
@@ -58,7 +59,8 @@ resp.invasives <- GET(paste0(service_url, "/2/query"),
                                  token=agol_token$token))
 
 invasives <- fromJSON(content(resp.invasives, type = "text", encoding = "UTF-8"))
-invasives <- invasives$features$attributes %>%
+invasives <- cbind(invasives$features$attributes, invasives$features$geometry) %>%
+  mutate(wkid = invasives$spatialReference$wkid) %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)

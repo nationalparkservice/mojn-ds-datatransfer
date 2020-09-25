@@ -12,7 +12,7 @@
 # set this to the location of the downloaded FGDB from AGOL
 
 # filepaths for testing import:
-gdb.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\MOJN_DS_Spring_LizzyTest.gdb"
+gdb.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\DS_Springs_LizzyTest.gdb"
 photo.dest <- "C:\\Users\\EEdson\\Desktop\\MOJN\\Photos_DS"
 originals.dest <- "C:\\Users\\EEdson\\Desktop\\MOJN\\Photo_Originals"
 db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-database-conn.csv"
@@ -24,9 +24,9 @@ db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-da
 # db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-database-conn.csv"
 #---------------------------#
 
-db <- list()
 
-## Get Site table from database
+#------------ Lookup tables form SQL database used--------------#
+## Get Site table from SQL database
 params <- readr::read_csv(db.params.path) %>% 
   as.list()
 params$drv <- odbc::odbc()
@@ -34,25 +34,40 @@ conn <- do.call(pool::dbPool, params)
 sites <- dplyr::tbl(conn, dbplyr::in_schema("data", "Site")) %>%
   dplyr::collect()
 
-
-# Get lookups of photo codes for photo naming. We need both the photo type and the photo SOP type for connecting I think. I will test both.
-
-# original photo type variable
+# Get lookups of all photo codes for photo naming. 
+#These are used for naming the internal photos and getting the photo description code for import inot data.photos
+# photo description look up variable (additional photos)
 photo.types <- dplyr::tbl(conn, dbplyr::in_schema("ref", "PhotoDescriptionCode")) %>%
   dplyr::collect() %>%
   select(ID, Code)
-# new one that conbines photo SOP. incase we need this
-photo.types1 <- dplyr::tbl(conn, dbplyr::in_schema("ref", "PhotoDescriptionCode")) %>%
-  dplyr::collect() %>%
-  select(ID, Code, PhotoSOPID)
+# # new one that conbines photo SOP. incase we need this
+# photo.types1 <- dplyr::tbl(conn, dbplyr::in_schema("ref", "PhotoDescriptionCode")) %>%
+#   dplyr::collect() %>%
+#   select(ID, Code, PhotoSOPID)
+# 
+# photo.types2 <-dplyr::tbl(conn, dbplyr::in_schema("lookup", "photoSOP")) %>%
+#   dplyr::collect() %>%
+#   select(ID, Code)
+# names(photo.types2) <- c("PhotoSOPID", "PhotoSOP_Code")
+# 
+# photoTypes <- photo.types1 %>% 
+#   left_join(photo.types2, by = "PhotoSOPID")
 
-photo.types2 <-dplyr::tbl(conn, dbplyr::in_schema("lookup", "photoSOP")) %>%
+## Lifeform look up table ( for riparian vegetation)
+lifeform.types <- dplyr::tbl(conn, dbplyr::in_schema("lookup", "Lifeform")) %>%
+  dplyr::collect() %>%
+  select(ID, Label, Code)
+
+## Taxon table (for invasive species)
+taxon.types <- dplyr::tbl(conn, dbplyr::in_schema("ref", "Taxon")) %>%
+  dplyr::collect() %>%
+  select(ID, USDAPlantsCode)
+
+## Repeat photo look up ( for repeat photos)
+repeat.types <- dplyr::tbl(conn, dbplyr::in_schema("lookup", "RepeatPhotoType")) %>%
   dplyr::collect() %>%
   select(ID, Code)
-names(photo.types2) <- c("PhotoSOPID", "PhotoSOP_Code")
-
-photoTypes <- photo.types1 %>% 
-  left_join(photo.types2, by = "PhotoSOPID")
+#-----------------------------------------------------------------------------------#
 
 
 ######################################################################################
@@ -64,24 +79,26 @@ py.ver <- py_config()
 #   use_python("C:\\Python27\\ArcGISx6410.5", required = TRUE)
 # }
 
-source_python("download-photos-ds.py")
+source_python("download-photos-ds_photodict.py")
 
-## Create Python dictionaries from photo and site lookups- don't need these because the site coddes are in the visit ID, and there are no photo types NB trying to add the photo codes back in
-#photo.type.dict <- py_dict(photo.types$ID, photo.types$Code)
-#site.code.dict <- py_dict(sites$ID, sites$Code)
+## Create Python dictionaries from the look up fields
+photo.type.dict <- py_dict(photo.types$ID, photo.types$Code)
+lifeform.type.dict <- py_dict(lifeform.types$ID, lifeform.types$Code)
+taxon.type.dict <- py_dict(taxon.types$ID, taxon.types$USDAPlantsCode)
+repeat.type.dict <- py_dict( repeat.types$ID, repeat.types$Code)
 
 
 ## Download photos from internal camera table this is the  riparian veg internal camera - Works!
 if(nrow(riparianVegInt) == 0){
   print("There are no Riparian Veg internal camera images")
 }else{
-  photo.type.field <- "LifeFormName"
+  photo.type.field <- "LifeForm"
   photo.table <- paste(gdb.path, "InternalCamera__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "InternalCamera", sep = "\\")
   repeat.data <- paste(gdb.path, "VegImageRepeat", sep = "\\")
   RV_IntImage <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, repeatFeatureClass = repeat.data,
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, photoTypeField = photo.type.field)
+                                                 originalsLocation = originals.dest, photoCodeDict = lifeform.type.dict , photoTypeField = photo.type.field)
   RV_IntImage <- as_tibble(RV_IntImage)
   RV_IntImage$VisitGUID <- str_remove_all(RV_IntImage$VisitGUID, "\\{|\\}")
   RV_IntImage$GlobalID <- str_remove_all(RV_IntImage$GlobalID, "\\{|\\}")
@@ -89,20 +106,21 @@ if(nrow(riparianVegInt) == 0){
 }
     
 
-## Download photos from Inv Image repeat table - works! these are the invasive internal camera images
+## Download photos from Inv Image repeat table, these are the invasive internal camera images - works!
 if(nrow(invasivesInt) == 0){
   print("There are no invasive internal camera images")
 }else{
-  photo.type.field <- "InvasiveSpeciesCode"
+  photo.type.field <- "InvasiveSpecies"
   photo.table <- paste(gdb.path, "InvImageRepeat__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "InvImageRepeat", sep = "\\")
   repeat.data <- paste(gdb.path, "InvasivePlants", sep = "\\")
   Inv_IntImage <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data,  repeatFeatureClass = repeat.data,
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, photoTypeField = photo.type.field)
+                                                 originalsLocation = originals.dest, photoCodeDict = taxon.type.dict, photoTypeField = photo.type.field)
   Inv_IntImage <- as_tibble(Inv_IntImage)
   Inv_IntImage$VisitGUID <- str_remove_all(Inv_IntImage$VisitGUID, "\\{|\\}")
   Inv_IntImage$GlobalID <- str_remove_all(Inv_IntImage$GlobalID, "\\{|\\}")
+  Inv_IntImage$RepeatGUID <- str_remove_all(Inv_IntImage$RepeatGUID, "\\{|\\}")
 }
 
 
@@ -110,35 +128,41 @@ if(nrow(invasivesInt) == 0){
 if(nrow(repeatsInt) == 0){
   print("There are no repeat photos internal images")
 }else{
-  photo.type.field <- "PhotoTypeName"
+  photo.type.field <- "PhotoType"
   photo.table <- paste(gdb.path, "RepeatPhotos_Internal__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "RepeatPhotos_Internal", sep = "\\")
   repeat.data <- paste(gdb.path, "Repeats", sep = "\\")
-  RepeatPhotosInternal <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, repeatFeatureClass = repeat.data,
+  Rep_IntImage <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, repeatFeatureClass = repeat.data,
                                                  visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                                 originalsLocation = originals.dest, photoTypeField = photo.type.field)
-  RepeatPhotosInternal <- as_tibble(RepeatPhotosInternal)
-  RepeatPhotosInternal$VisitGUID <- str_remove_all(RepeatPhotosInternal$VisitGUID, "\\{|\\}")
-  RepeatPhotosInternal$GlobalID <- str_remove_all(RepeatPhotosInternal$GlobalID, "\\{|\\}")
+                                                 originalsLocation = originals.dest, photoCodeDict = repeat.type.dict, photoTypeField = photo.type.field)
+  Rep_IntImage  <- as_tibble(Rep_IntImage )
+  Rep_IntImage $VisitGUID <- str_remove_all(Rep_IntImage $VisitGUID, "\\{|\\}")
+  Rep_IntImage $GlobalID <- str_remove_all(Rep_IntImage $GlobalID, "\\{|\\}")
+  Rep_IntImage$RepeatGUID <- str_remove_all(Rep_IntImage$RepeatGUID, "\\{|\\}")
 }
 
-## Download photos from Additional Photo Internal table - this needs the phototype dict as a cod is stored not the name.so it uses a differnt python code Unless we can store the name code in there too!
+## Download photos from Additional Photo Internal table - works!
 if(nrow(additionalPhotosInt) == 0){
   print("There are no additional internal photo images")
 }else{
+  photo.type.field <- "AdditionalPhotoType"
   photo.table <- paste(gdb.path, "AdditionalPhotoInternal__ATTACH", sep = "\\")
   photo.data <- paste(gdb.path, "AdditionalPhotoInternal", sep = "\\")
+  repeat.data <- paste(gdb.path, "AdditionalPhotos2", sep = "\\")
   AP_IntImage <- download_visit_photos(attTable = photo.table, photoFeatureClass = photo.data, repeatFeatureClass = repeat.data,
                                        visitFeatureClass = visit.data, dataPhotoLocation = photo.dest, 
-                                       originalsLocation = originals.dest, photoTypeField = photo.type.field)
+                                       originalsLocation = originals.dest, photoCodeDict = photo.type.dict, photoTypeField = photo.type.field)
   AP_IntImage <- as_tibble(AP_IntImage)
   AP_IntImage$VisitGUID <- str_remove_all(AP_IntImage$VisitGUID, "\\{|\\}")
   AP_IntImage$GlobalID <- str_remove_all(AP_IntImage$GlobalID, "\\{|\\}")
+  AP_IntImage$RepeatGUID <- str_remove_all(AP_IntImage$RepeatGUID, "\\{|\\}")
 }
 
 ##################################################################################################
 
-## upload table data
+## upload the table data to SQL server
+# create empty list for storing the tables
+db <- list()
 
 ## Visit table -works!
 db$Visit <- visit %>%
@@ -159,7 +183,7 @@ db$Visit <- visit %>%
 
 visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)  # Insert into Visit table in database
 
-## TODO repeats. this is repeat photos anot sure how to tie ext and int photos together
+
 
 ## Visit Personnel table -Works!
 db$VisitPersonnel <- observers %>%
@@ -245,7 +269,6 @@ db$DischargeVol <- visit %>%
 dischargeVOL.keys <-uploadData(db$DischargeVol , "data.DischargeVolumetricObservation", conn, keep.guid = FALSE)
 
 ## Spring Brook dimensions -works!
-
 db$SpringbrookDim <- visit %>% 
   inner_join(dischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
   select(DischargeActivityID = ID,
@@ -261,6 +284,7 @@ SpringbrookDim.keys <-uploadData(db$SpringbrookDim , "data.SpringbrookDimensions
 ## WaterQualityActivity table - works!
 db$WQactivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(WasWaterQualityDataCollected ==1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          WaterQualityDataCollectedID = WasWaterQualityDataCollected,
@@ -414,9 +438,9 @@ db$DisturbanceActivity <- visit %>%
 
 DisturbanceActivity.keys <-uploadData(db$DisturbanceActivity, "data.DisturbanceActivity", conn, keep.guid = FALSE)
 
-## Disturbance Flow Modification table - works!
 
-db$DisturbanceMod <-flowMod %>% 
+## Disturbance Flow Modification table - works!
+db$DisturbanceMod <-disturbanceFlowMod%>% 
   inner_join(DisturbanceActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
   select(DisturbanceActivityID = ID,
          GlobalID = globalid,
@@ -428,6 +452,7 @@ DisturbanceMod.keys <-uploadData(db$DisturbanceMod, "data.DisturbanceFlowModific
 # Wildlife Activity table - works!
 db$WildlifeActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(Waswildlifeobserved ==1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          IsWildlifeObservedID = Waswildlifeobserved) %>% 
@@ -436,7 +461,7 @@ db$WildlifeActivity <- visit %>%
 WildlifeActivity.keys <-uploadData(db$WildlifeActivity, "data.WildlifeActivity", conn, keep.guid = FALSE)
 
 
-## wildlife observation table _ check with Sarah about the mutate to replace missing values before running, but it should work fine
+## wildlife observation table _ works
 db$WildlifeObservation <- wildlife %>% 
   inner_join(WildlifeActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
   select(WildlifeActivityID= ID,
@@ -456,9 +481,10 @@ db$WildlifeObservation <- wildlife %>%
 WildlifeObservation.keys <-uploadData(db$WildlifeObservation , "data.WildlifeObservation", conn, keep.guid = FALSE)
 
 
-# Riparian veg Activity table - works!
+# Riparian veg Activity table - works! filters on if riparian veg was observed
 db$riparianVegActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(WasRiparianVegetationObserved ==1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          IsVegetationObservedID = WasRiparianVegetationObserved,
@@ -467,8 +493,7 @@ db$riparianVegActivity <- visit %>%
 riparianVegActivity.keys <-uploadData(db$riparianVegActivity, "data.RiparianVegetationActivity", conn, keep.guid = FALSE)
 
 
-## riparian veg observation table - should work but need to confer with Sarah We rename the fields to match the riparian veg fieldds. but 
-
+## riparian veg observation table - works!
 tempveg1<- visit %>% 
   inner_join(riparianVegActivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(RiparianVegetationActivityID = ID,
@@ -490,30 +515,28 @@ tempveg1<- visit %>%
 
 tempVeg2 <- gather(tempveg1, "LifeFormName", "Rank", 5:15) %>% 
   filter(Rank !=12) %>% 
-  left_join(vegImage, by = c("GlobalID" = "parentglobalid", "LifeFormName" = "LifeFormName" )) %>% 
+  left_join(riparianVeg, by = c("GlobalID" = "parentglobalid", "LifeFormName" = "LifeFormName" )) %>% 
   select(RiparianVegetationActivityID,
          GlobalID,
          LifeFormName,
-         LifeFormID = LifeForm,
          Rank,
-         DominantSpecies )
+         DominantSpecies) %>% 
+  inner_join(lifeform.types, by = c("LifeFormName" = "Label")) # gets the life form ID from lookup.lifeform
 
 db$riparianVegObservation <- tempVeg2  %>% 
-  select(-LifeFormName) %>% 
-  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) # ask Sarah where these should come from as there is no taxon ID in this table
+  select(-LifeFormName,
+         - Code,
+         LifeFormID = ID) %>% 
+  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) 
 
 riparianVegObservation.keys <-uploadData(db$riparianVegObservation , "data.RiparianVegetationObservation", conn, keep.guid = FALSE)
 ## there is a non matching record between the visit table and veg repeat table that is creating a null in the table for import - how should we handle these kinds of errors?
 
 
-
-
-## then need to get the riparian photo table. For this we still observation ID, but have to tie back into get the life form photos field and split it out somehow
-
-
 ## Invasives Activity table - works!
 db$InvasiveActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(WereInvasivesObserved == 1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          InvasivesObservedID = WereInvasivesObserved,
@@ -522,34 +545,62 @@ db$InvasiveActivity <- visit %>%
 
 InvasiveActivity.keys <-uploadData(db$InvasiveActivity, "data.InvasivesActivity", conn, keep.guid = FALSE)
 
-## Invasives Observations table
-db$InvasiveObservation <- invasive %>% 
+## Invasives Observations table - works!
+db$InvasiveObservation <- invasives %>% 
   inner_join(InvasiveActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
+  inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
   select(InvasivesActivityID = ID,
          GlobalID = globalid,
+         UTMZoneID = UTMZone,
+         HorizontalDatumID  = Datum,
+         GPSUnitID = GPS,
+         GpsX = x,
+         GpsY = y,
          TaxonID = InvasiveSpecies,
          RiparianVegetationBufferID = RiparianVegBuffer) %>% 
   #mutate_at(c(3:4), ~replace(., is.na(.), 1)) %>% # delete- only for testingt
-  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) # ask Sarah where these should come from as there is no taxon ID in this table
-## missing a species notes field? Also utm's, the invasive table is a point layer but I cant see the coords in the table.
-
+  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1,
+          GpsX = round(GpsX,8),
+          GpsY = round(GpsY,8)) %>% 
+  mutate_at(c(9), ~replace(., is.na(.), 1)) # for testing- delete!!!
+## missing a species notes field?
 
 InvasiveObservation.keys <-uploadData(db$InvasiveObservation, "data.InvasivesObservation", conn, keep.guid = FALSE)
-# there is a null value in the invaives table caused by an empty species and taxon ID field in AGOl. How should we handle these?
+# there is a null value in the real invaives table caused by an empty species and taxon ID field in AGOl. fix for the one time import
 
-
-
-## Invasive Photo (external) table
-db$InvasivePhotos <- extCameraFilesInv %>% 
-  inner_join(InvasiveObservation.keys, by = c("parentglobalid" = "GlobalID")) %>% 
-  select(InvasivesObservationID= ID,
+## Repeat Activity table - works
+db$RepeatActivity <-visit %>% 
+  inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
+  select(VisitID = ID,
          GlobalID = globalid,
-         PhotoFileNumber = ExternalFileNumbersInv)
+         CameraID = Camera,
+         CameraCardID = CameraCard) %>% 
+  mutate(DataProcessingLevelID = 1)
 
-InvasivePhotos.keys <-uploadData(db$InvasivePhotos, "data.InvasivesPhoto", conn, keep.guid = FALSE)
+RepeatActivity.keys <-uploadData(db$RepeatActivity, "data.RepeatPhotoActivity", conn, keep.guid = FALSE)
 
 
+## Repeat Observations table - works!
+db$RepeatObservation <- repeats %>% 
+  inner_join(RepeatActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
+  inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
+  select(RepeatPhotoActivityID = ID,
+         GlobalID = globalid,
+         RepeatPhotoTypeID = PhotoType,
+         Notes = PhotoNotes_ExternalCamera,
+         UTMZone,
+         HorizontalDatumID  = Datum,
+         GPSUnitID = GPS,
+         GpsX = x,
+         GpsY = y )%>% 
+  #mutate_at(c(3:4), ~replace(., is.na(.), 1)) %>% # delete- only for testingt
+  mutate(GpsX = round(GpsX,8),
+          GpsY = round(GpsY,8))
 
+
+RepeatObservation.keys <-uploadData(db$RepeatObservation, "data.RepeatPhotoObservation", conn, keep.guid = FALSE)
+
+######################################################################
 ## Photo Activity table - works! This is for all photos ext and int
 db$PhotoActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>%
@@ -562,61 +613,162 @@ db$PhotoActivity <- visit %>%
 PhotoActivity.keys <-uploadData(db$PhotoActivity, "data.PhotoActivity", conn, keep.guid = FALSE)
 names(PhotoActivity.keys) <- c("PhotoActivityID", "VisitGlobalID")
 
-## Photo table ( this looks like its for internal photos downloaded to files, rather than external photo file numbers?)
+## Photo table upload in 2 stages, internal images and external images
+## needs to be done last - get all internal tables first only if there are invasive images
+# internal photos - works!
 
-# invasive internal photos
-photo1 <- InvImageRepeat %>% 
-  mutate(VisitGUID = tolower(VisitGUID),
-         GlobalID = tolower(GlobalID)) %>%
-  inner_join(PhotoActivity.keys, by = c("VisitGUID" = "VisitGlobalID")) %>% 
-  inner_join(visit, by = c("VisitGUID" = "globalid")) %>% 
+if (any(visit$UsingInternalCamera == "Y")){
+  print("Internal")
+  # invasive internal photos -
+  photo1 <- Inv_IntImage %>% 
+    mutate(VisitGUID = tolower(VisitGUID),
+           GlobalID = tolower(GlobalID),
+           RepeatGUID = tolower(RepeatGUID)) %>%
+    inner_join(PhotoActivity.keys, by = c("VisitGUID" = "VisitGlobalID")) %>% 
+    inner_join(visit, by = c("VisitGUID" = "globalid")) %>% 
+    inner_join(invasives, by = c("RepeatGUID" = "globalid")) %>% 
+    inner_join(photo.types, by = c("PhotoType" = "Code")) %>% 
+    select(PhotoActivityID,
+           StartDateTime,
+           OriginalFilePath,
+           RenamedFilePath,
+           PhotoDescriptionCodeID = ID,
+           GPSUnitID = GPS,
+           HorizontalDatumID = Datum,
+           GpsX = x,
+           GpsY = y,
+           wkid) %>% 
+    mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
+           IsLibraryPhotoID = 9,
+           GpsX = round(GpsX,8),
+           GpsY = round(GpsY,8)) 
+  
+  # repeat internal photos
+  photo2 <- Rep_IntImage %>% 
+    mutate(VisitGUID = tolower(VisitGUID),
+           GlobalID = tolower(GlobalID),
+           RepeatGUID = tolower(RepeatGUID)) %>%
+    inner_join(PhotoActivity.keys, by = c("VisitGUID" = "VisitGlobalID")) %>% 
+    inner_join(visit, by = c("VisitGUID" = "globalid")) %>% 
+    inner_join(repeats, by = c("RepeatGUID" = "globalid")) %>% 
+    inner_join(photo.types, by = c("PhotoType.x" = "Code")) %>%
+    select(PhotoActivityID,
+           StartDateTime,
+           OriginalFilePath,
+           RenamedFilePath,
+           PhotoDescriptionCodeID = ID,
+           GPSUnitID = GPS,
+           HorizontalDatumID = Datum,
+           GpsX = x,
+           GpsY = y,
+           wkid) %>% 
+    mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
+           IsLibraryPhotoID = 9,
+           GpsX = round(GpsX,8),
+           GpsY = round(GpsY,8))
+  
+  
+  # riparian veg internal photos
+  photo3 <- RV_IntImage %>% 
+    mutate(VisitGUID = tolower(VisitGUID),
+           GlobalID = tolower(GlobalID),
+           RepeatGUID = tolower(RepeatGUID)) %>%
+    inner_join(PhotoActivity.keys, by = c("VisitGUID" = "VisitGlobalID")) %>% 
+    inner_join(visit, by = c("VisitGUID" = "globalid")) %>% 
+    inner_join(riparianVeg, by = c("RepeatGUID" = "globalid")) %>% 
+    inner_join(photo.types, by = c("PhotoType" = "Code")) %>%
+    select(PhotoActivityID,
+           StartDateTime,
+           OriginalFilePath,
+           RenamedFilePath,
+           PhotoDescriptionCodeID = ID,
+           GPSUnitID = GPS,
+           HorizontalDatumID = Datum) %>% 
+    mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
+           IsLibraryPhotoID = 9,
+           GpsX = as.numeric(""),
+           GpsY = as.numeric(""),
+           wkid = as.numeric(""))
+  
+  # additional internal photos
+  photo4 <- AP_IntImage %>% 
+    mutate(VisitGUID = tolower(VisitGUID),
+           GlobalID = tolower(GlobalID),
+           RepeatGUID = tolower(RepeatGUID)) %>%
+    inner_join(PhotoActivity.keys, by = c("VisitGUID" = "VisitGlobalID")) %>% 
+    inner_join(visit, by = c("VisitGUID" = "globalid")) %>% 
+    inner_join(additionalPhotos, by = c("RepeatGUID" = "globalid")) %>% 
+    inner_join(photo.types, by = c("PhotoType" = "Code")) %>%
+    select(PhotoActivityID,
+           StartDateTime,
+           OriginalFilePath,
+           RenamedFilePath,
+           PhotoDescriptionCodeID = ID,
+           GPSUnitID = GPS,
+           HorizontalDatumID = Datum) %>% 
+    mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
+           IsLibraryPhotoID = 9,
+           GpsX = as.numeric(""),
+           GpsY = as.numeric(""),
+           wkid = as.numeric(""))
+  # join tables together 
+  #add utm fields ..... to do
+  db$PhotoInt <- rbind(photo1, photo2, photo3, photo4) %>% 
+    select(-wkid, - StartDateTime)
+
+
+  PhotoInt.keys <-uploadData(db$PhotoInt, "data.Photo", conn, keep.guid = FALSE)
+  
+}else{
+  print("No internal images to import")
+}
+
+# Notes = PhotoNotes?
+############################### need to finish! 2 tables and file names########################
+#external photos
+
+#invasive - have to double join to look up tables to get photoTypeID
+photo5 <- invasivesExt %>% 
+  inner_join(invasives, by = c("parentglobalid" = "globalid")) %>% 
+  inner_join(visit, by = c("parentglobalid.y" = "globalid")) %>% 
+  inner_join(PhotoActivity.keys, by = c("parentglobalid.y" = "VisitGlobalID")) %>% 
+  inner_join(taxon.types, by = c("InvasiveSpecies"= "ID")) %>% 
+  inner_join(photo.types, by = c("USDAPlantsCode" = "Code")) %>% 
   select(PhotoActivityID,
          StartDateTime,
-         OriginalFilePath,
-         RenamedFilePath,
-         GPSUnit = GPS) %>% 
-  mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"))
+         GPSUnitID = GPS,
+         HorizontalDatumID = Datum,
+         GpsX = x,
+         GpsY = y,
+         wkid,
+         ExternalFileNumbersInv, 
+         PhotoDescriptionCodeID = ID) %>% 
+  mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
+         IsLibraryPhotoID = 9,
+         GpsX = round(GpsX,8),
+         GpsY = round(GpsY,8))
 
+# repeat external photos
+photo6 <- repeatsExt %>% 
+  inner_join(repeats, by = c("parentglobalid" = "globalid")) %>% 
+  inner_join(visit, by = c("parentglobalid.y" = "globalid")) %>% 
+  inner_join(PhotoActivity.keys, by = c("parentglobalid.y" = "VisitGlobalID")) %>% 
+  select(PhotoActivityID,
+         StartDateTime,
+         GPSUnitID = GPS,
+         HorizontalDatumID = Datum,
+         GpsX = x,
+         GpsY = y,
+         wkid,
+         ExternalFileNumber, 
+         PhotoDescriptionCodeID = PhotoType) %>% 
+  mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
+         IsLibraryPhotoID = 9,
+         GpsX = round(GpsX,8),
+         GpsY = round(GpsY,8))
+  
+# riparian veg external photos
 
-# where are these?
-# PhotoDescriptionCodeID = PhotoTypeID,
-# IsLibraryPhotoID = IsLibrary,  
-# X_coord = x,
-# Y_coord = y,
-# WKID = wkid,
-# Notes = PhotoNotes)
-
-
-#################################################### from STLK script left for now but will remove ######
-# ## PhotoActivity table
-# db$PhotoActivity <- visit %>%  # All the photo activity data actually just comes from visit!
-#   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>%
-#   select(VisitID = ID,
-#          GlobalID = globalid,
-#          CameraID,
-#          CameraCardID) %>%
-#   unique()
-# photoact.keys <- uploadData(db$PhotoActivity, "data.PhotoActivity", conn, keep.guid = FALSE)
-# names(photoact.keys) <- c("PhotoActivityID", "VisitGlobalID")
-# 
-# ## Photo table
-# db$Photo <- annual_photos %>%
-#   mutate(VisitGUID = tolower(VisitGUID),
-#          GlobalID = tolower(GlobalID)) %>%
-#   inner_join(photoact.keys, by = c("VisitGUID" = "VisitGlobalID")) %>%
-#   inner_join(photos, by = c('GlobalID' = 'globalid')) %>%
-#   select(PhotoActivityID,
-#          PhotoDescriptionCodeID = PhotoTypeID,
-#          IsLibraryPhotoID = IsLibrary,
-#          OriginalFilePath,
-#          RenamedFilePath,
-#          GPSUnit = GPS_Photo,
-#          X_coord = x,
-#          Y_coord = y,
-#          WKID = wkid,
-#          Notes = PhotoNotes)
-# photo.keys <- uploadData(db$Photo, "data.Photo", conn, keep.guid = FALSE)
-
-###############################################################################################################
+# additional external photos
 
 pool::poolClose(conn)
