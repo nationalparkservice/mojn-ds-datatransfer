@@ -19,6 +19,7 @@ library(tidyverse)
 library(pool)
 library(dbplyr)
 library(DBI)
+library(stringr)
 source("utils-ds.R")
 
 source("agol-download-ds.R")
