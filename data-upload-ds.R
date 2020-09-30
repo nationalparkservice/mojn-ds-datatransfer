@@ -65,6 +65,10 @@ taxon.types <- dplyr::tbl(conn, dbplyr::in_schema("ref", "Taxon")) %>%
 repeat.types <- dplyr::tbl(conn, dbplyr::in_schema("lookup", "RepeatPhotoType")) %>%
   dplyr::collect() %>%
   select(ID, Code)
+
+## get sensor to deployment ID crosswalk table to import sensor retrieval data
+SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
+  dplyr::collect() 
 #-----------------------------------------------------------------------------------#
 
 
@@ -184,35 +188,64 @@ if(nrow(additionalPhotosInt) == 0){
 
 ###################################################################################################
 ## This section uploads the straight data tables from AGOL
-## to the SQL server database
+## to the SQL server database - 
+## in some cases there is a commented out chunk for use next year, plus a chunk for this year only
 ###################################################################################################
 
 ## create empty list for storing the tables as columns in a dataframe
 db <- list()
 
-## Visit table -works!
+# ## Visit table -works USE NEXT YEAR
+# db$Visit <- visit %>%
+#   select(SiteID,
+#          StartDateTime,
+#          Notes = SpringComments,
+#          GlobalID = globalid,
+#          SpringTypeID = SpringType,
+#          VisitTypeID = VisitType,
+#          MonitoringStatusID = Status) %>%
+#   mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
+#          StartTime = format.Date(StartDateTime, "%H:%M:%S"),
+#          DataProcessingLevelID = 1,  # Raw
+#          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
+#          ) %>%
+#   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
+#   select(-StartDateTime) 
+# 
+# # Insert into Visit table in database
+# visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)  
+
+
+## Visit table -USE THIS YEAR ONLY. Pastes sensor retrival notes into visit notes where the sensor ID is null
+## (these are the different sensors the protocol were trying out)
+sensorRetrievalNulls <- sensorRetrieval %>% 
+  filter(is.na(SensorIDRet)) # gets those extra sensor retrieval records
+
 db$Visit <- visit %>%
+  left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
   select(SiteID,
          StartDateTime,
          Notes = SpringComments,
+         SensorRetrieveNotes,
          GlobalID = globalid,
          SpringTypeID = SpringType,
          VisitTypeID = VisitType,
          MonitoringStatusID = Status) %>%
-  mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
+  mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
+          VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
          StartTime = format.Date(StartDateTime, "%H:%M:%S"),
          DataProcessingLevelID = 1,  # Raw
          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
          ) %>%
   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
-  select(-StartDateTime) 
+  select(-StartDateTime, -SensorRetrieveNotes)
 
 # Insert into Visit table in database
-visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)  
+visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
 
 
 
-## Visit Personnel table -Works!
+## Visit Personnel table
 db$VisitPersonnel <- observers %>%
   inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
   select(VisitID = ID,
@@ -225,7 +258,7 @@ personnel.keys <- uploadData(db$VisitPersonnel, "data.VisitPersonnel", conn,keep
                                              PersonnelID = integer(), 
                                              PersonnelRoleID = integer()))
 
-## sensor deployment table - works!
+## sensor deployment table
 db$SensorDeploy <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>%
   filter(SensorDeployed == "Y") %>% 
@@ -239,28 +272,61 @@ db$SensorDeploy <- visit %>%
 
 sensorDep.keys <-uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep.guid = FALSE)
 
-# ## sensor retrieval table - Hold on this, Sarah says SensorID ret is not deployment Sensor
-# db$SensorRetrieve <- sensor %>% 
-#   inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>% 
-#   inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
-#   select(IsSensorretrievedID = SensorRetrieved,
-#          GlobalID = globalid,
-#          SensorDeploymentID = SensorIDRet,
-#          SensorProblemID = SensorProblem,
-#          RetrievalTime,
-#          DownloadSuccessful,
-#          notes = SensorRetrieveNotes) %>% 
-#   mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
-#                                              DownloadSuccessful =="N" ~ 2,
-#                                              DownloadSuccessful == "NA" ~ 8,
-#                                              DownloadSuccessful == "ND" ~ 9),
-#          RetrievalTimeOfDay= paste(RetrievalTime, ":00", sep = "")) %>% 
-#   select(-RetrievalTime, -DownloadSuccessful)
-# 
-# sensorRet.keys <-uploadData(db$SensorRetrieve , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
+# ## sensor retrieval table - USE NEXT YEAR
+# if (any(is.na(sensorRetrieval$SensorIDRet))){
+#   print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
+#   print( "These need fixing before the import will run")
+# }else{
+#   db$SensorRetrieval <- sensorRetrieval %>%
+#     inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+#     inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
+#     left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>% 
+#     select(VisitID = ID,
+#            GlobalID = globalid,
+#            SensorDeploymentID = DeploymentID,
+#            IsSensorretrievedID = SensorRetrieved,
+#            SensorProblemID = SensorProblem,
+#            RetrievalTime,
+#            DownloadSuccessful,
+#            notes = SensorRetrieveNotes) %>%
+#     mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
+#                                                DownloadSuccessful =="N" ~ 2,
+#                                                DownloadSuccessful == "NA" ~ 8,
+#                                                is.na(DownloadSuccessful) ~ 9,
+#                                                DownloadSuccessful == "ND" ~ 9),
+#            RetrievalTimeOfDay= paste(RetrievalTime, ":00", sep = "")) %>%
+#     select(-RetrievalTime, -DownloadSuccessful)
+#   
+#   sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
+# }
+
+## sensor retrieval table - USE THIS YEAR ONLY - needs a final test!!
+## the other sensors notes (without sensorID's) were put in the visit table this year
+db$SensorRetrieval <- sensorRetrieval %>%
+  inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+  inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
+  left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>%
+  filter(!is.na(SensorIDRet)) %>% 
+  select(VisitID = ID,
+         GlobalID = globalid,
+         SensorDeploymentID = DeploymentID,
+         IsSensorretrievedID = SensorRetrieved,
+         SensorProblemID = SensorProblem,
+         RetrievalTime,
+         DownloadSuccessful,
+         notes = SensorRetrieveNotes) %>%
+  mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
+                                             DownloadSuccessful =="N" ~ 2,
+                                             DownloadSuccessful == "NA" ~ 8,
+                                             is.na(DownloadSuccessful) ~ 9,
+                                             DownloadSuccessful == "ND" ~ 9),
+         RetrievalTimeOfDay= paste(RetrievalTime, ":00", sep = "")) %>%
+  select(-RetrievalTime, -DownloadSuccessful)
+
+sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
 
 
-## flow discharge activity table - works!
+## flow discharge activity table
 db$DischargeFlow <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   select(VisitID = ID,
@@ -273,7 +339,7 @@ dischargeFlow.keys <-uploadData(db$DischargeFlow , "data.DischargeActivity", con
                                 keep.guid = FALSE)
 
 
-## estimated discharge table - Works!
+## estimated discharge table
 db$DischargeEst <- visit %>% 
   inner_join(dischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
   select(DischargeActivityID = ID,
@@ -287,7 +353,7 @@ dischargeEst.keys <-uploadData(db$DischargeEst , "data.DischargeEstimatedObserva
                                keep.guid = FALSE)
 
 
-## Discharge volumetric table - works!
+## Discharge volumetric table
 db$DischargeVol <- visit %>% 
   inner_join(dischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(DischargeMethod !="EST") %>% 
@@ -302,7 +368,7 @@ dischargeVOL.keys <-uploadData(db$DischargeVol , "data.DischargeVolumetricObserv
                                keep.guid = FALSE)
 
 
-## Spring Brook dimensions -works!
+## Spring Brook dimensions
 db$SpringbrookDim <- visit %>% 
   inner_join(dischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
   select(DischargeActivityID = ID,
@@ -316,7 +382,7 @@ SpringbrookDim.keys <-uploadData(db$SpringbrookDim , "data.SpringbrookDimensions
                                  keep.guid = FALSE)
 
 
-## WaterQualityActivity table - works!
+## Water Quality Activity table
 db$WQactivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(WasWaterQualityDataCollected ==1) %>% 
@@ -334,10 +400,11 @@ WQactivity.keys <-uploadData(db$WQactivity, "data.WaterQualityActivity", conn,
                              keep.guid = FALSE)
 
 
-## Water Quality DO table - works!
+## Water Quality DO table
 DO1 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_1,
          DissolvedOxygen_percent = DissolvedOxygen_percent_1,
          DataQualityFlagID = DO_1Flag) %>% 
@@ -346,6 +413,7 @@ DO1 <- visit %>%
 DO2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_2,
          DissolvedOxygen_percent = DissolvedOxygen_percent_2,
          DataQualityFlagID = DO_2Flag)%>% 
@@ -354,6 +422,7 @@ DO2 <- visit %>%
 DO3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_3,
          DissolvedOxygen_percent = DissolvedOxygen_percent_3,
          DataQualityFlagID = DO_3Flag)%>% 
@@ -365,10 +434,11 @@ db$WQ_DO <- rbind(DO1, DO2, DO3) %>%
 WQ_DO.keys <-uploadData(db$WQ_DO, "data.WaterQualityDO", conn, keep.guid = FALSE)
 
 
-## Water Quality pH table - works!
+## Water Quality pH table
 pH1 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          pH = pH_1,
          DataQualityFlagID = pH_1Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -376,6 +446,7 @@ pH1 <- visit %>%
 pH2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          pH = pH_2,
          DataQualityFlagID = pH_2Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -383,6 +454,7 @@ pH2 <- visit %>%
 pH3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          pH = pH_3,
          DataQualityFlagID = pH_3Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -394,10 +466,11 @@ WQ_pH.keys <-uploadData(db$WQ_pH, "data.WaterQualitypH", conn,
                         keep.guid = FALSE)
 
 
-## Water Quality SpCond table - works!
+## Water Quality SpCond table
 spCond1 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          SpecificConductance_microS_per_cm = SpecificConductance_microS_1,
          DataQualityFlagID = SpCond_microS_1Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -405,6 +478,7 @@ spCond1 <- visit %>%
 spCond2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          SpecificConductance_microS_per_cm = SpecificConductance_microS_2,
          DataQualityFlagID = SpCond_microS_2Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -412,6 +486,7 @@ spCond2 <- visit %>%
 spCond3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          SpecificConductance_microS_per_cm = SpecificConductance_microS_3,
          DataQualityFlagID = SpCond_microS_3Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -424,10 +499,11 @@ WQ_SpCond.keys <-uploadData(db$WQ_SpCond, "data.WaterQualitySpCond", conn,
 
 
 
-## Water Quality Temp C table - works!
+## Water Quality Temp C table
 tempC1 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          WaterTemperature_C = Temperature_C_1,
          DataQualityFlagID = Temp_C_1Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -435,6 +511,7 @@ tempC1 <- visit %>%
 tempC2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          WaterTemperature_C = Temperature_C_2,
          DataQualityFlagID = Temp_C_2Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -442,6 +519,7 @@ tempC2 <- visit %>%
 tempC3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(WaterQualityActivityID = ID,
+         GlobalID = globalid,
          WaterTemperature_C = Temperature_C_3,
          DataQualityFlagID = Temp_C_3Flag) %>% 
   filter(!is.na (DataQualityFlagID))
@@ -455,7 +533,7 @@ WQ_tempC.keys <-uploadData(db$WQ_tempC, "data.WaterQualityTemperature", conn,
 
 
 
-## Disturbance Activity table - works!
+## Disturbance Activity table
 db$DisturbanceActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   select(VisitID = ID,
@@ -479,7 +557,7 @@ DisturbanceActivity.keys <-uploadData(db$DisturbanceActivity, "data.DisturbanceA
                                       keep.guid = FALSE)
 
 
-## Disturbance Flow Modification table - works!
+## Disturbance Flow Modification table
 db$DisturbanceMod <-disturbanceFlowMod%>% 
   inner_join(DisturbanceActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
   select(DisturbanceActivityID = ID,
@@ -490,7 +568,7 @@ DisturbanceMod.keys <-uploadData(db$DisturbanceMod, "data.DisturbanceFlowModific
                                  keep.guid = FALSE)
 
 
-# Wildlife Activity table - works!
+# Wildlife Activity table
 db$WildlifeActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(Waswildlifeobserved ==1) %>% 
@@ -503,7 +581,7 @@ WildlifeActivity.keys <-uploadData(db$WildlifeActivity, "data.WildlifeActivity",
                                    keep.guid = FALSE)
 
 
-## wildlife observation table _ works
+## wildlife observation table
 db$WildlifeObservation <- wildlife %>% 
   inner_join(WildlifeActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
   select(WildlifeActivityID= ID,
@@ -517,13 +595,13 @@ db$WildlifeObservation <- wildlife %>%
          Vocalization,
          OtherEvidence,
          Notes = Species_Notes) %>% 
-  mutate_at(c(3:10), ~replace(., is.na(.), 3)) # replaces NA with "No Data" code
+  mutate_at(c(3:10), ~replace(., is.na(.), 9)) # replaces NA with "No Data" code
 
 WildlifeObservation.keys <-uploadData(db$WildlifeObservation , "data.WildlifeObservation", conn,
                                       keep.guid = FALSE)
 
 
-## Riparian veg Activity table - works! filters on if riparian veg was observed
+## Riparian veg Activity table - Filters on if riparian veg was observed
 db$riparianVegActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(WasRiparianVegetationObserved ==1) %>% 
@@ -537,7 +615,7 @@ riparianVegActivity.keys <-uploadData(db$riparianVegActivity, "data.RiparianVege
                                       keep.guid = FALSE)
 
 
-## riparian veg observation table - works!
+## riparian veg observation table
 tempveg1<- visit %>% 
   inner_join(riparianVegActivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(RiparianVegetationActivityID = ID,
@@ -575,15 +653,13 @@ db$riparianVegObservation <- tempVeg2  %>%
          - Code,
          LifeFormID = ID) %>% 
   mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) 
-# there is a non matching record between the visit table and veg repeat table
-# that is creating a null in the table for import - manually fix for this go, but remove for reals
 
 riparianVegObservation.keys <-uploadData(db$riparianVegObservation , "data.RiparianVegetationObservation", conn, 
                                          keep.guid = FALSE)
 
 
 
-## Invasives Activity table - works!
+## Invasives Activity table
 db$InvasiveActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(WereInvasivesObserved == 1) %>% 
@@ -591,12 +667,13 @@ db$InvasiveActivity <- visit %>%
          GlobalID = globalid,
          InvasivesObservedID = WereInvasivesObserved,
          Notes = InvasiveNotes) %>% 
-  mutate(DataProcessingLevelID = 1)  # Raw
+  mutate(DataProcessingLevelID = 1)  # Raw DPL
 
 InvasiveActivity.keys <-uploadData(db$InvasiveActivity, "data.InvasivesActivity", conn, 
                                    keep.guid = FALSE)
 
-## Invasives Observations table - works!
+## Invasives Observations table
+## missing a species notes field in AGOL?
 db$InvasiveObservation <- invasives %>% 
   inner_join(InvasiveActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
   inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
@@ -609,18 +686,20 @@ db$InvasiveObservation <- invasives %>%
          GpsY = y,
          TaxonID = InvasiveSpecies,
          RiparianVegetationBufferID = RiparianVegBuffer) %>% 
-  #mutate_at(c(3:4), ~replace(., is.na(.), 1)) %>% # delete- only for testingt
   mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1,
           GpsX = round(GpsX,8),
-          GpsY = round(GpsY,8)) %>% 
-  #mutate_at(c(9), ~replace(., is.na(.), 1)) # for testing- delete!!!
-## missing a species notes field?
-  # there is a null value in the real invaives table caused by an empty species and taxon ID field in AGOl. fix for the one time import
+          GpsY = round(GpsY,8))
+# only use code below for THIS YEAR. This replaces the empty species field in AGOl
+# with a taxon ID of 55 (Unknown). And the empty riparian buffer zone field with a 9 (no data)
+db$InvasiveObservation  <- db$InvasiveObservation %>% 
+  mutate_at(c(8), ~replace(., is.na(.), 55)) %>% 
+  mutate_at(c(9), ~replace(., is.na(.), 9))
+  
 InvasiveObservation.keys <-uploadData(db$InvasiveObservation, "data.InvasivesObservation", conn,
                                       keep.guid = FALSE)
 
 
-## Repeat Activity table - works
+## Repeat Activity table
 db$RepeatActivity <-visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
   select(VisitID = ID,
@@ -633,22 +712,25 @@ RepeatActivity.keys <-uploadData(db$RepeatActivity, "data.RepeatPhotoActivity", 
                                  keep.guid = FALSE)
 
 
-## Repeat Observations table - works!
+## Repeat Observations table
 db$RepeatObservation <- repeats %>% 
   inner_join(RepeatActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
   inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
   select(RepeatPhotoActivityID = ID,
          GlobalID = globalid,
          RepeatPhotoTypeID = PhotoType,
-         Notes = PhotoNotes_ExternalCamera,
          UTMZone,
          HorizontalDatumID  = Datum,
          GPSUnitID = GPS,
          GpsX = x,
          GpsY = y )%>% 
-  #mutate_at(c(3:4), ~replace(., is.na(.), 1)) %>% # delete- only for testingt
   mutate(GpsX = round(GpsX,8),
           GpsY = round(GpsY,8))
+
+# only use code below for THIS YEAR. This replaces the empty repeat photo type in AGOl
+# with a repeat photo type id ID of 3 (Other).
+db$RepeatObservation  <- db$RepeatObservation %>% 
+  mutate_at(c(3), ~replace(., is.na(.), 3)) 
 
 RepeatObservation.keys <-uploadData(db$RepeatObservation, "data.RepeatPhotoObservation", conn,
                                     keep.guid = FALSE)
@@ -658,7 +740,7 @@ RepeatObservation.keys <-uploadData(db$RepeatObservation, "data.RepeatPhotoObser
 ## (both inernal and external images)
 ################################################################################################
 
-## photo activity table - works!
+## photo activity table
 db$PhotoActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>%
   select( VisitID = ID,
@@ -673,7 +755,7 @@ names(PhotoActivity.keys) <- c("PhotoActivityID", "VisitGlobalID")
 
 ## Photo table upload in 2 stages, internal images and external images
 
-## internal photos if there are any - works!
+## internal photos if there are any
 if (any(visit$UsingInternalCamera == "Y")){
   print("Internal Images present")
   # invasive internal photos -
@@ -769,7 +851,6 @@ if (any(visit$UsingInternalCamera == "Y")){
            GpsY = as.numeric(""),
            wkid = as.numeric(""))
   #add utm fields ..... TODO
-  # Notes = PhotoNotes?
   
   ## Join tables together 
   db$PhotoInt <- rbind(photo1, photo2, photo3, photo4) %>% 
@@ -816,6 +897,7 @@ if (any(visit$UsingInternalCamera == "Y")){
            StartDateTime,
            GPSUnitID = GPS,
            HorizontalDatumID = Datum,
+           Notes = PhotoNotes_ExternalCamera,
            GpsX = x,
            GpsY = y,
            wkid,
@@ -824,8 +906,7 @@ if (any(visit$UsingInternalCamera == "Y")){
     mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
            IsLibraryPhotoID = 9,
            GpsX = round(GpsX,8),
-           GpsY = round(GpsY,8),
-           Notes = "")
+           GpsY = round(GpsY,8))
   
   # riparian veg external photos
   photo7 <- riparianVegExt %>%
@@ -868,29 +949,38 @@ if (any(visit$UsingInternalCamera == "Y")){
   db$PhotoExt <- rbind(photo5, photo6, photo7, photo8) %>% 
     select(-wkid, - StartDateTime)
   
-  ## Now get the external image file paths from Server folders ##
-  # get the list of visit dates sub folders from the original image folder
-  visitDates <-list.files(ExternalOrig)
-  # subset the visit list by date range variables
-  # -prevents previous years being searched that may have the same file number
-  visitDatesSubset <-subset(visitDates, visitDates > surveyYearStart & visitDates < surveyYearEnd)
-  
-  # create empty dataframe
+  ### Find the external image file paths from Server folders following the DS schema doc ##
+  # list of camera card folders
+  visitCard<-list.files(ExternalOrig)
+  # create empty dataframe for filepaths
   FilePathOrig <- data.frame(OriginalFilePath = character())
   
-  # grab image filepaths
-  for(i in 1:length(visitDatesSubset)){
-    print(i)
-    orig_images <- list.files(paste(ExternalOrig,visitDatesSubset[i], sep = ""), full.names = TRUE)
-    print(orig_images)
-    FilePathOrig <- rbind(FilePathOrig, data.frame(orig_images) )
+  # loop thouugh card folders and date folders to extract image pathnames
+  for(j in 1:length(visitCard)){
+    print(paste("visit camera Card =",visitCard[j]))
+    # get the list of visit dates sub folders from the original image folder
+    visitDates <-list.files(paste(ExternalOrig,visitCard[j], sep = ""))
+    # subset the visit list by date range variables
+    # -prevents previous years being searched that may have the same file number
+    visitDatesSubset <-subset(visitDates, visitDates > surveyYearStart & visitDates < surveyYearEnd)
+    print( paste("number of date sub folders to scrape from this memory card:", length(visitDatesSubset)))
+    # grab image filepaths if there are values in visitDatesSubset
+    if (length(visitDatesSubset)>0){
+      for(i in 1:length(visitDatesSubset)){
+        #print(paste("i =",i))
+        OriginalFilePath <- list.files(paste(ExternalOrig,visitCard,"/",visitDatesSubset[i], sep = ""), full.names = TRUE)
+        print(paste("OriginalFilepath = ",OriginalFilePath))
+        FilePathOrig <- rbind(FilePathOrig, data.frame(OriginalFilePath) )
+      }
+    }
   }
   
-  # get the photo 4 digit code from each file name
+  # extract the photo 4 digit code from each file name
   FilePathOrig <- FilePathOrig %>% 
-    mutate(ExternalFileNumber = stringr::str_sub(orig_images,-8,-5))
+    mutate(ExternalFileNumber = stringr::str_sub(OriginalFilePath,-8,-5))
   
-  ## now fnd the matching files in the renamed folder ##
+  
+  ### Find the matching files in the renamed folder following the schema doc  ###
   # get the list of park sub folders from the renamed image folder
   visitParks <-list.files(ExternalSorted)
   # create empty dataframe
@@ -899,14 +989,14 @@ if (any(visit$UsingInternalCamera == "Y")){
   # grab image filepaths
   for(i in 1:length(visitParks)){
     print(i)
-    renamed_images <- list.files(paste(ExternalSorted,visitParks[i], sep = ""), full.names = TRUE)
-    print(renamed_images)
-    FilePathRenamed <- rbind(FilePathRenamed, data.frame(renamed_images) )
+    RenamedFilePath <- list.files(paste(ExternalSorted,visitParks[i], sep = ""), full.names = TRUE)
+    print(RenamedFilePath)
+    FilePathRenamed <- rbind(FilePathRenamed, data.frame(RenamedFilePath) )
   }
   
   # get the photo 4 digit code from each file name
   FilePathRenamed <- FilePathRenamed %>% 
-    mutate(ExternalFileNumber = stringr::str_sub(renamed_images,-8,-5))
+    mutate(ExternalFileNumber = stringr::str_sub(RenamedFilePath,-8,-5))
   
   ## Join together both file path tables
   FilePathExternal <- FilePathOrig %>% 

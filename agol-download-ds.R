@@ -16,8 +16,8 @@ token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",
                    encode = "form")
 agol_token <- fromJSON(content(token_resp, type="text", encoding = "UTF-8"))
 
-#service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_815059c20fd448628dc23441f7a7c473/FeatureServer"
-service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_781d06dcb4bc4537b179e6aec279a2ca/FeatureServer"
+service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_815059c20fd448628dc23441f7a7c473/FeatureServer"
+#service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/service_781d06dcb4bc4537b179e6aec279a2ca/FeatureServer"
 
 ## Get AGOL desert springs (DS) spring visit point layer: MOJN_DS_SpringVisit
 ## create visit dataframe
