@@ -1003,7 +1003,7 @@ if (any(visit$UsingInternalCamera == "N")){
   photoZone11_Ext$UtmY_m <- coord.UTM11$coords.x2
   
   # turn records from zone 12 into a spatial table and transform to UTM
-  coord.Dec12 = sp::SpatialPoints(cbind(photoZone12_Ext$GpsX, photoZone12$GpsY), proj4string=CRS(DecimalCode))
+  coord.Dec12 = sp::SpatialPoints(cbind(photoZone12_Ext$GpsX, photoZone12_Ext$GpsY), proj4string=CRS(DecimalCode))
   coord.UTM12 <- spTransform(coord.Dec12, CRS(UTMcode12))
   # add utm fields back into subset table
   photoZone12_Ext$UtmX_m <- coord.UTM12$coords.x1
@@ -1015,7 +1015,7 @@ if (any(visit$UsingInternalCamera == "N")){
            UtmY_m = ifelse(GpsY !=0,UtmY_m,0)) %>% 
     select(-UTMZone)
 
-  db$PhotoExt <- rbind(photoZones, photo7, photo8) %>%
+  db$PhotoExt <- rbind(photoZones_Ext, photo7, photo8) %>%
     select(- StartDateTime)
   
   
