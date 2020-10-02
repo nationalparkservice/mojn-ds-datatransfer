@@ -19,7 +19,9 @@ library(tidyverse)
 library(pool)
 library(dbplyr)
 library(DBI)
-library(stringr)
+library(stringr)# easy string manipulation
+library(rgdal) # for spatial point conversions
+library(sp)    # for spatial point conversions
 source("utils-ds.R")
 
 source("agol-download-ds.R")

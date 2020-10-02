@@ -21,6 +21,12 @@ ExternalSorted <- "C:/Users/EEdson/Desktop/MOJN/Photos_DS/"
 # date range of survey year (used for external image file path wrangling)
 surveyYearStart <- "2020_08_01"
 surveyYearEnd <- "2020_10_01"
+# variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
+UTMcode11 <-"+init=epsg:26911"
+UTMcode12 <-"+init=epsg:26912"
+DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but check from AGOL
+
+
 
 # filepaths for the real import:
 # gdb.path <- "M:\\MONITORING\\StreamsLakes\\Data\\WY2019\\FieldData\\Lakes_Annual\\STLK_AnnualLakeVisit_20191022.gdb"
@@ -31,6 +37,12 @@ surveyYearEnd <- "2020_10_01"
 # # date range of survey year (used for external image file path wrangling)
 # surveyYearStart <- "2020_08_01"
 # surveyYearEnd <- "2020_10_01"
+# variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
+# UTMcode11 <-"+init=epsg:26911"
+# UTMcode12 <-"+init=epsg:26912"
+# DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change
+
+
 #--------------------------------------------------------------------------------#
 
 
@@ -195,7 +207,7 @@ if(nrow(additionalPhotosInt) == 0){
 ## create empty list for storing the tables as columns in a dataframe
 db <- list()
 
-# ## Visit table -works USE NEXT YEAR
+# ## Visit table - works USE NEXT YEAR ( 2021!)
 # db$Visit <- visit %>%
 #   select(SiteID,
 #          StartDateTime,
@@ -210,10 +222,10 @@ db <- list()
 #          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
 #          ) %>%
 #   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
-#   select(-StartDateTime) 
+#   select(-StartDateTime)
 # 
 # # Insert into Visit table in database
-# visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)  
+# visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
 
 
 ## Visit table -USE THIS YEAR ONLY. Pastes sensor retrival notes into visit notes where the sensor ID is null
@@ -774,9 +786,9 @@ if (any(visit$UsingInternalCamera == "Y")){
            PhotoDescriptionCodeID = ID,
            GPSUnitID = GPS,
            HorizontalDatumID = Datum,
+           UTMZone,
            GpsX = x,
-           GpsY = y,
-           wkid) %>% 
+           GpsY = y) %>% 
     mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
            IsLibraryPhotoID = 9,
            GpsX = round(GpsX,8),
@@ -798,9 +810,9 @@ if (any(visit$UsingInternalCamera == "Y")){
            PhotoDescriptionCodeID = ID,
            GPSUnitID = GPS,
            HorizontalDatumID = Datum,
+           UTMZone,
            GpsX = x,
-           GpsY = y,
-           wkid) %>% 
+           GpsY = y) %>% 
     mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
            IsLibraryPhotoID = 9,
            GpsX = round(GpsX,8),
@@ -827,7 +839,8 @@ if (any(visit$UsingInternalCamera == "Y")){
            IsLibraryPhotoID = 9,
            GpsX = as.numeric(""),
            GpsY = as.numeric(""),
-           wkid = as.numeric(""))
+           UtmX_m = as.numeric(""),
+           UtmY_m = as.numeric(""))
   
   # additional internal photos
   photo4 <- AP_IntImage %>% 
@@ -849,12 +862,38 @@ if (any(visit$UsingInternalCamera == "Y")){
            IsLibraryPhotoID = 9,
            GpsX = as.numeric(""),
            GpsY = as.numeric(""),
-           wkid = as.numeric(""))
-  #add utm fields ..... TODO
+           UtmX_m = as.numeric(""),
+           UtmY_m = as.numeric(""))
+  
+  # join the 2 tables that contain coord data, and split into UTM zone 11 and 12
+  photoZone11_Int <- rbind(photo1, photo2) %>% 
+    filter(UTMZone == 11)
+  photoZone12_Int <- rbind(photo1, photo2) %>% 
+    filter(UTMZone == 12)
+  
+  # turn records from zone 11 into a spatial table and transform to UTM
+  coord.Dec11 = sp::SpatialPoints(cbind(photoZone11_Int$GpsX, photoZone11_Int$GpsY), proj4string=CRS(DecimalCode))
+  coord.UTM11 <- spTransform(coord.Dec11, CRS(UTMcode11))
+  # add utm fields back into subset table
+  photoZone11_Int$UtmX_m <- coord.UTM11$coords.x1
+  photoZone11_Int$UtmY_m <- coord.UTM11$coords.x2
+  
+  # turn records from zone 12 into a spatial table and transform to UTM
+  coord.Dec12 = sp::SpatialPoints(cbind(photoZone12_Int$GpsX, photoZone12_Int$GpsY), proj4string=CRS(DecimalCode))
+  coord.UTM12 <- spTransform(coord.Dec12, CRS(UTMcode12))
+  # add utm fields back into subset table
+  photoZone12_Int$UtmX_m <- coord.UTM12$coords.x1
+  photoZone12_Int$UtmY_m <- coord.UTM12$coords.x2
+  
+  # join tables back together and remove any UTMs where there were 0,0 gps coords
+  photoZones_Int <- rbind(photoZone11_Int, photoZone12_Int) %>% 
+    mutate(UtmX_m = ifelse(GpsX !=0,UtmX_m,0),
+           UtmY_m = ifelse(GpsY !=0,UtmY_m,0)) %>% 
+    select(-UTMZone)
   
   ## Join tables together 
-  db$PhotoInt <- rbind(photo1, photo2, photo3, photo4) %>% 
-    select(-wkid, - StartDateTime)
+  db$PhotoInt <- rbind(photoZones_Int, photo3, photo4) %>% 
+    select( - StartDateTime)
 
   PhotoInt.keys <-uploadData(db$PhotoInt, "data.Photo", conn, keep.guid = FALSE)
   
@@ -879,7 +918,7 @@ if (any(visit$UsingInternalCamera == "Y")){
          HorizontalDatumID = Datum,
          GpsX = x,
          GpsY = y,
-         wkid,
+         UTMZone,
          ExternalFileNumber = ExternalFileNumbersInv, 
          PhotoDescriptionCodeID = ID) %>% 
   mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
@@ -887,6 +926,8 @@ if (any(visit$UsingInternalCamera == "Y")){
          GpsX = round(GpsX,8),
          GpsY = round(GpsY,8),
          Notes = "")
+  
+  
 
   # repeat external photos
   photo6 <- repeatsExt %>% 
@@ -900,7 +941,7 @@ if (any(visit$UsingInternalCamera == "Y")){
            Notes = PhotoNotes_ExternalCamera,
            GpsX = x,
            GpsY = y,
-           wkid,
+           UTMZone,
            ExternalFileNumber, 
            PhotoDescriptionCodeID = PhotoType) %>% 
     mutate(DateTaken = format.Date(StartDateTime, "%Y-%m-%d"),
@@ -908,7 +949,7 @@ if (any(visit$UsingInternalCamera == "Y")){
            GpsX = round(GpsX,8),
            GpsY = round(GpsY,8))
   
-  # riparian veg external photos
+  # riparian veg external photos- no coords in table
   photo7 <- riparianVegExt %>%
     inner_join(riparianVeg, by = c("parentglobalid" = "globalid")) %>% 
     inner_join(visit, by = c("parentglobalid.y" = "globalid")) %>% 
@@ -925,10 +966,11 @@ if (any(visit$UsingInternalCamera == "Y")){
            IsLibraryPhotoID = 9,
            GpsX = as.numeric(""),
            GpsY = as.numeric(""),
-           wkid = as.numeric(""),
+           UtmX_m = as.numeric(""),
+           UtmY_m = as.numeric(""),
            Notes = "")
   
-  # additional external photos
+  # additional external photos - no coords in table
   photo8 <- additionalPhotosExt %>% 
     inner_join(additionalPhotos, by = c("parentglobalid" = "globalid")) %>% 
     inner_join(visit, by = c("parentglobalid.y" = "globalid")) %>% 
@@ -944,10 +986,39 @@ if (any(visit$UsingInternalCamera == "Y")){
            IsLibraryPhotoID = 9,
            GpsX = as.numeric(""),
            GpsY = as.numeric(""),
-           wkid = as.numeric(""))
+           UtmX_m = as.numeric(""),
+           UtmY_m = as.numeric(""))
   
-  db$PhotoExt <- rbind(photo5, photo6, photo7, photo8) %>% 
-    select(-wkid, - StartDateTime)
+  # join the 2 tables that contain coord data, and split into UTM zone 11 and 12
+  photoZone11_Ext <- rbind(photo5, photo6) %>% 
+    filter(UTMZone == 11)
+  photoZone12_Ext <- rbind(photo5, photo6) %>% 
+    filter(UTMZone == 12)
+  
+  # turn records from zone 11 into a spatial table and transform to UTM
+  coord.Dec11 = sp::SpatialPoints(cbind(photoZone11_Ext$GpsX, photoZone11_Ext$GpsY), proj4string=CRS(DecimalCode))
+  coord.UTM11 <- spTransform(coord.Dec11, CRS(UTMcode11))
+  # add utm fields back into subset table
+  photoZone11_Ext$UtmX_m <- coord.UTM11$coords.x1
+  photoZone11_Ext$UtmY_m <- coord.UTM11$coords.x2
+  
+  # turn records from zone 12 into a spatial table and transform to UTM
+  coord.Dec12 = sp::SpatialPoints(cbind(photoZone12_Ext$GpsX, photoZone12$GpsY), proj4string=CRS(DecimalCode))
+  coord.UTM12 <- spTransform(coord.Dec12, CRS(UTMcode12))
+  # add utm fields back into subset table
+  photoZone12_Ext$UtmX_m <- coord.UTM12$coords.x1
+  photoZone12_Ext$UtmY_m <- coord.UTM12$coords.x2
+  
+  # join tables back together and remove any UTMs where there were 0,0 gps coords
+  photoZones_Ext <- rbind(photoZone11_Ext, photoZone12_Ext) %>% 
+    mutate(UtmX_m = ifelse(GpsX !=0,UtmX_m,0),
+           UtmY_m = ifelse(GpsY !=0,UtmY_m,0)) %>% 
+    select(-UTMZone)
+
+  db$PhotoExt <- rbind(photoZones, photo7, photo8) %>%
+    select(- StartDateTime)
+  
+  
   
   ### Find the external image file paths from Server folders following the DS schema doc ##
   # list of camera card folders
@@ -980,7 +1051,7 @@ if (any(visit$UsingInternalCamera == "Y")){
     mutate(ExternalFileNumber = stringr::str_sub(OriginalFilePath,-8,-5))
   
   
-  ### Find the matching files in the renamed folder following the schema doc  ###
+  ### Find the matching files in the renamed folder following the schema doc ###
   # get the list of park sub folders from the renamed image folder
   visitParks <-list.files(ExternalSorted)
   # create empty dataframe
