@@ -12,12 +12,12 @@
 
 # set this to the location of the downloaded FGDB from AGOL
 # filepaths for testing import:
-gdb.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\DS_Springs_LizzyTest.gdb" 
-photo.dest <- "C:\\Users\\EEdson\\Desktop\\MOJN\\Photos_DS"
-originals.dest <- "C:\\Users\\EEdson\\Desktop\\MOJN\\Photo_Originals"
-db.params.path <- "C:\\Users\\EEdson\\Desktop\\MOJN\\mojn-ds-datatransfer\\ds-database-conn.csv"
-ExternalOrig <- "C:/Users/EEdson/Desktop/MOJN/Photo_Originals/"
-ExternalSorted <- "C:/Users/EEdson/Desktop/MOJN/Photos_DS/"
+gdb.path <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\MOJN_DS_SpringVisit_20201002.gdb" 
+photo.dest <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest"
+originals.dest <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\Originals"
+db.params.path <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\ds-database-conn.csv"
+ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/"
+ExternalSorted <- photo.dest
 # date range of survey year (used for external image file path wrangling)
 surveyYearStart <- "2020_08_01"
 surveyYearEnd <- "2020_10_01"
