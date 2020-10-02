@@ -903,7 +903,7 @@ if (any(visit$UsingInternalCamera == "Y")){
 
 
 ## external photos if there are any
-if (any(visit$UsingInternalCamera == "Y")){
+if (any(visit$UsingInternalCamera == "N")){
   print("External")
   #invasive - have to double join to look up tables to get photoTypeID
   photo5 <- invasivesExt %>% 
