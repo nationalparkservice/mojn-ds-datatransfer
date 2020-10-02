@@ -317,12 +317,12 @@ sensorDep.keys <-uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep
 db$SensorRetrieval <- sensorRetrieval %>%
   inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
   inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
-  left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>%
+  left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
   filter(!is.na(SensorIDRet)) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          SensorDeploymentID = DeploymentID,
-         IsSensorretrievedID = SensorRetrieved,
+         IsSensorRetrievedID = SensorRetrieved,
          SensorProblemID = SensorProblem,
          RetrievalTime,
          DownloadSuccessful,
