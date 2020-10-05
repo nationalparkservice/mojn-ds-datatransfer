@@ -217,7 +217,7 @@ db <- list()
 #          VisitTypeID = VisitType,
 #          MonitoringStatusID = Status) %>%
 #   mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
-#          StartTime = format.Date(StartDateTime, "%H:%M:%S"),
+#          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
 #          DataProcessingLevelID = 1,  # Raw
 #          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
 #          ) %>%
@@ -245,7 +245,8 @@ db$Visit <- visit %>%
          MonitoringStatusID = Status) %>%
   mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
           VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
-         StartTime = format.Date(StartDateTime, "%H:%M:%S"),
+         #StartTime = format.Date(StartDateTime, "%H:%M:%S"),
+         StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
          DataProcessingLevelID = 1,  # Raw
          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
          ) %>%
@@ -279,7 +280,7 @@ db$SensorDeploy <- visit %>%
          SensorID = SensorIDDep,
          DeploymentTime,
          Notes = SensorDeployNote) %>% 
-  mutate(DeploymentTimeOfDay= paste(DeploymentTime, ":00", sep = "")) %>% 
+  mutate(DeploymentTimeOfDay= paste("1899-12-30 ",DeploymentTime, ":00", sep = "")) %>% 
   select(-DeploymentTime)
 
 sensorDep.keys <-uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep.guid = FALSE)
@@ -306,7 +307,7 @@ sensorDep.keys <-uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep
 #                                                DownloadSuccessful == "NA" ~ 8,
 #                                                is.na(DownloadSuccessful) ~ 9,
 #                                                DownloadSuccessful == "ND" ~ 9),
-#            RetrievalTimeOfDay= paste(RetrievalTime, ":00", sep = "")) %>%
+#            RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
 #     select(-RetrievalTime, -DownloadSuccessful)
 #   
 #   sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
@@ -332,7 +333,7 @@ db$SensorRetrieval <- sensorRetrieval %>%
                                              DownloadSuccessful == "NA" ~ 8,
                                              is.na(DownloadSuccessful) ~ 9,
                                              DownloadSuccessful == "ND" ~ 9),
-         RetrievalTimeOfDay= paste(RetrievalTime, ":00", sep = "")) %>%
+         RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
   select(-RetrievalTime, -DownloadSuccessful)
 
 sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
@@ -394,10 +395,9 @@ SpringbrookDim.keys <-uploadData(db$SpringbrookDim , "data.SpringbrookDimensions
                                  keep.guid = FALSE)
 
 
-## Water Quality Activity table
+## Water Quality Activity table - collects record whether WQ data was collected or not
 db$WQactivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
-  filter(WasWaterQualityDataCollected ==1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          WaterQualityDataCollectedID = WasWaterQualityDataCollected,
@@ -580,10 +580,9 @@ DisturbanceMod.keys <-uploadData(db$DisturbanceMod, "data.DisturbanceFlowModific
                                  keep.guid = FALSE)
 
 
-# Wildlife Activity table
+# Wildlife Activity table - Creates record whether wildlife were observed or not
 db$WildlifeActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
-  filter(Waswildlifeobserved ==1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          IsWildlifeObservedID = Waswildlifeobserved) %>% 
@@ -613,10 +612,9 @@ WildlifeObservation.keys <-uploadData(db$WildlifeObservation , "data.WildlifeObs
                                       keep.guid = FALSE)
 
 
-## Riparian veg Activity table - Filters on if riparian veg was observed
+## Riparian veg Activity table - Creates record whether veg was observed or not
 db$riparianVegActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
-  filter(WasRiparianVegetationObserved ==1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          IsVegetationObservedID = WasRiparianVegetationObserved,
@@ -671,10 +669,9 @@ riparianVegObservation.keys <-uploadData(db$riparianVegObservation , "data.Ripar
 
 
 
-## Invasives Activity table
+## Invasives Activity table - Creates record whether invasives were observed or not
 db$InvasiveActivity <- visit %>% 
   inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
-  filter(WereInvasivesObserved == 1) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          InvasivesObservedID = WereInvasivesObserved,
@@ -1003,7 +1000,7 @@ if (any(visit$UsingInternalCamera == "Y")){
   photoZone11_Ext$UtmY_m <- coord.UTM11$coords.x2
   
   # turn records from zone 12 into a spatial table and transform to UTM
-  coord.Dec12 = sp::SpatialPoints(cbind(photoZone12_Ext$GpsX, photoZone12$GpsY), proj4string=CRS(DecimalCode))
+  coord.Dec12 = sp::SpatialPoints(cbind(photoZone12_Ext$GpsX, photoZone12_Ext$GpsY), proj4string=CRS(DecimalCode))
   coord.UTM12 <- spTransform(coord.Dec12, CRS(UTMcode12))
   # add utm fields back into subset table
   photoZone12_Ext$UtmX_m <- coord.UTM12$coords.x1
@@ -1015,7 +1012,7 @@ if (any(visit$UsingInternalCamera == "Y")){
            UtmY_m = ifelse(GpsY !=0,UtmY_m,0)) %>% 
     select(-UTMZone)
 
-  db$PhotoExt <- rbind(photoZones, photo7, photo8) %>%
+  db$PhotoExt <- rbind(photoZones_Ext, photo7, photo8) %>%
     select(- StartDateTime)
   
   
