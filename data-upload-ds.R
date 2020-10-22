@@ -1079,7 +1079,7 @@ if (any(visit$UsingInternalCamera == "N")){
     left_join(FilePathExternal, by = "ExternalFileNumber") %>% 
     select(-ExternalFileNumber)
   
-  PhotoExt.keys <-uploadData(db$PhotoExt, "data.Photo", conn, keep.guid = FALSE)
+  PhotoExt.keys <- uploadData(db$PhotoExt, "data.Photo", conn, keep.guid = FALSE)
   
 }else{
   print("No external images to import")
