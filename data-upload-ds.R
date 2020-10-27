@@ -13,10 +13,10 @@
 # set this to the location of the downloaded FGDB from AGOL
 # filepaths for testing import:
 gdb.path <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\MOJN_DS_SpringVisit_20201002.gdb" 
-photo.dest <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest"
+photo.dest <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\Renamed"
 originals.dest <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\Originals"
 db.params.path <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\ds-database-conn.csv"
-ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/"
+ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify"
 ExternalSorted <- photo.dest
 # date range of survey year (used for external image file path wrangling)
 surveyYearStart <- "2020_08_01"
@@ -63,6 +63,11 @@ photo.types <- dplyr::tbl(conn, dbplyr::in_schema("ref", "PhotoDescriptionCode")
   dplyr::collect() %>%
   select(ID, Code)
 
+## Camera card lookup
+camera.cards <- dplyr::tbl(conn, dbplyr::in_schema("ref", "CameraCard_Shared")) %>%
+  dplyr::collect() %>%
+  select(ID, Label)
+
 ## Lifeform look up table ( for riparian vegetation)
 lifeform.types <- dplyr::tbl(conn, dbplyr::in_schema("lookup", "Lifeform")) %>%
   dplyr::collect() %>%
@@ -78,9 +83,9 @@ repeat.types <- dplyr::tbl(conn, dbplyr::in_schema("lookup", "RepeatPhotoType"))
   dplyr::collect() %>%
   select(ID, Code)
 
-## get sensor to deployment ID crosswalk table to import sensor retrieval data
-SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
-  dplyr::collect() 
+# ## get sensor to deployment ID crosswalk table to import sensor retrieval data
+# SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
+#   dplyr::collect() 
 #-----------------------------------------------------------------------------------#
 
 
@@ -283,7 +288,11 @@ db$SensorDeploy <- visit %>%
   mutate(DeploymentTimeOfDay= paste("1899-12-30 ",DeploymentTime, ":00", sep = "")) %>% 
   select(-DeploymentTime)
 
-sensorDep.keys <-uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep.guid = FALSE)
+sensorDep.keys <- uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep.guid = FALSE)
+
+## get sensor to deployment ID crosswalk table to import sensor retrieval data
+SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
+  dplyr::collect() 
 
 # ## sensor retrieval table - USE NEXT YEAR
 # if (any(is.na(sensorRetrieval$SensorIDRet))){
@@ -319,7 +328,8 @@ db$SensorRetrieval <- sensorRetrieval %>%
   inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
   inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
   left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
-  filter(!is.na(SensorIDRet)) %>% 
+  filter(!is.na(SensorIDRet) &
+           as.Date(StartDateTime) > as.Date(DeploymentDate)) %>% 
   select(VisitID = ID,
          GlobalID = globalid,
          SensorDeploymentID = DeploymentID,
@@ -336,7 +346,7 @@ db$SensorRetrieval <- sensorRetrieval %>%
          RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
   select(-RetrievalTime, -DownloadSuccessful)
 
-sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
+sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
 
 
 ## flow discharge activity table
@@ -1013,69 +1023,138 @@ if (any(visit$UsingInternalCamera == "N")){
     select(-UTMZone)
 
   db$PhotoExt <- rbind(photoZones_Ext, photo7, photo8) %>%
-    select(- StartDateTime)
+    select(- StartDateTime) %>%
+    mutate(ExternalFileNumber = trimws(ExternalFileNumber, which = "both"))
   
+  # Locate external files in incoming photos folder and generate renamed paths
+  db$PhotoExt %<>%
+    inner_join(PhotoActivity.keys, by = c("PhotoActivityID" = "PhotoActivityID")) %>%
+    inner_join(db$PhotoActivity, by = c("VisitGlobalID" = "GlobalID")) %>%
+    inner_join(db$Visit, by = c("VisitGlobalID" = "GlobalID")) %>%
+    inner_join(sites, by = c("SiteID" = "ID")) %>%
+    rename(SiteCode = Code) %>%  # Do this now so that there aren't two Code columns
+    left_join(camera.cards, by = c("CameraCardID" = "ID")) %>%
+    left_join(photo.types, by = c("PhotoDescriptionCodeID" = "ID")) %>%
+    mutate(CameraCard = Label,
+           PhotoDescriptionCode = Code) %>%
+    mutate(NewFilename = paste(SiteCode, format.Date(DateTaken, "%Y%m%d"), PhotoDescriptionCode, ExternalFileNumber, sep = "_"),
+           NewFilename = paste0(NewFilename, ".JPG"),
+           FilePathRenamed = file.path(normalizePath(ExternalSorted, winslash = .Platform$file.sep), SiteCode, NewFilename),
+           OrigFileDir = file.path(normalizePath(ExternalOrig, winslash = .Platform$file.sep), CameraCard, format.Date(DateTaken, "%Y_%m_%d")))
   
-  
-  ### Find the external image file paths from Server folders following the DS schema doc ##
-  # list of camera card folders
-  visitCard<-list.files(ExternalOrig)
-  # create empty dataframe for filepaths
-  FilePathOrig <- data.frame(OriginalFilePath = character())
-  
-  # loop thouugh card folders and date folders to extract image pathnames
-  for(j in 1:length(visitCard)){
-    print(paste("visit camera Card =",visitCard[j]))
-    # get the list of visit dates sub folders from the original image folder
-    visitDates <-list.files(paste(ExternalOrig,visitCard[j], sep = ""))
-    # subset the visit list by date range variables
-    # -prevents previous years being searched that may have the same file number
-    visitDatesSubset <-subset(visitDates, visitDates > surveyYearStart & visitDates < surveyYearEnd)
-    print( paste("number of date sub folders to scrape from this memory card:", length(visitDatesSubset)))
-    # grab image filepaths if there are values in visitDatesSubset
-    if (length(visitDatesSubset)>0){
-      for(i in 1:length(visitDatesSubset)){
-        #print(paste("i =",i))
-        OriginalFilePath <- list.files(paste(ExternalOrig,visitCard,"/",visitDatesSubset[i], sep = ""), full.names = TRUE)
-        print(paste("OriginalFilepath = ",OriginalFilePath))
-        FilePathOrig <- rbind(FilePathOrig, data.frame(OriginalFilePath) )
-      }
+  db$PhotoExt$OrigFileName <- NA
+  for (i in 1:nrow(db$PhotoExt)) {
+    OrigFile = list.files(db$PhotoExt$OrigFileDir[[i]], pattern = paste0("*.", db$PhotoExt$ExternalFileNumber[[i]], ".JPG"))
+    if (length(OrigFile) == 1) {
+      db$PhotoExt$OrigFileName[[i]] <- OrigFile
+    } else if (length(OrigFile) == 0) {
+      warning(paste0("File number ", db$PhotoExt$ExternalFileNumber[[i]], ", taken at ", db$PhotoExt$SiteCode[[i]], ", not found in ", db$PhotoExt$OrigFileDir[[i]]), immediate. = TRUE)
+    } else if (length(OrigFile) > 1) {
+      warning(paste0("More than one photo found matching file number ", db$PhotoExt$ExternalFileNumber[[i]],  ", taken at ", db$PhotoExt$SiteCode[[i]], " found in ", db$PhotoExt$OrigFileDir[[i]]))
     }
   }
   
-  # extract the photo 4 digit code from each file name
-  FilePathOrig <- FilePathOrig %>% 
-    mutate(ExternalFileNumber = stringr::str_sub(OriginalFilePath,-8,-5))
+  db$PhotoExt %<>% mutate(OriginalFilePath = ifelse(is.na(OrigFileName), NA, file.path(OrigFileDir, OrigFileName)),
+                             RenamedFilePath = ifelse(is.na(OrigFileName), NA, file.path(FilePathRenamed, NewFilename))
+  )
   
-  
-  ### Find the matching files in the renamed folder following the schema doc ###
-  # get the list of park sub folders from the renamed image folder
-  visitParks <-list.files(ExternalSorted)
-  # create empty dataframe
-  FilePathRenamed <- data.frame(RenamedFilePath = character())
-  
-  # grab image filepaths
-  for(i in 1:length(visitParks)){
-    print(i)
-    RenamedFilePath <- list.files(paste(ExternalSorted,visitParks[i], sep = ""), full.names = TRUE)
-    print(RenamedFilePath)
-    FilePathRenamed <- rbind(FilePathRenamed, data.frame(RenamedFilePath) )
+  # If any photos are missing, give option to cancel data transfer
+  if (any(is.na(db$PhotoExt$OrigFileName))) {
+    continue <- readline(prompt = "Some external photos could not be found. Would you like to continue with the data transfer (Y/N)?:  ")
+    while (!(continue %in% c("N", "n", "Y", "y"))) {
+      continue <- readline(prompt = "You must select 'Y' or 'N'. Would you like to continue with the data transfer (Y/N)?:  ")
+    }
+    if (continue %in% c("N", "n")) {
+      stop("Data transfer cancelled due to missing photos")
+    } else if (continue %in% c("Y", "y")) {
+      message("Continuing data transfer")
+    }
   }
   
-  # get the photo 4 digit code from each file name
-  FilePathRenamed <- FilePathRenamed %>% 
-    mutate(ExternalFileNumber = stringr::str_sub(RenamedFilePath,-8,-5))
+  for (i in 1:nrow(db$PhotoExt)) {
+    if (!is.na(db$PhotoExt$OrigFileName[i])) {
+      orig.path <- db$PhotoExt$OriginalFilePath[i]
+      new.path <- db$PhotoExt$RenamedFilePath[i]
+      if (!dir.exists(dirname(new.path))) {
+        dir.create(dirname(new.path), recursive = TRUE)
+      }
+      file.copy(from = orig.path, to = new.path, overwrite = FALSE, copy.mode = FALSE, copy.date = TRUE)
+    }
+  }
   
-  ## Join together both file path tables
-  FilePathExternal <- FilePathOrig %>% 
-    left_join(FilePathRenamed, by = "ExternalFileNumber")
+  # ### Find the external image file paths from Server folders following the DS schema doc ##
+  # # list of camera card folders
+  # visitCard<-list.files(ExternalOrig)
+  # # create empty dataframe for filepaths
+  # FilePathOrig <- data.frame(OriginalFilePath = character())
+  # 
+  # # loop thouugh card folders and date folders to extract image pathnames
+  # for(j in 1:length(visitCard)){
+  #   print(paste("visit camera Card =",visitCard[j]))
+  #   # get the list of visit dates sub folders from the original image folder
+  #   visitDates <-list.files(paste(ExternalOrig,visitCard[j], sep = ""))
+  #   # subset the visit list by date range variables
+  #   # -prevents previous years being searched that may have the same file number
+  #   visitDatesSubset <-subset(visitDates, visitDates > surveyYearStart & visitDates < surveyYearEnd)
+  #   print( paste("number of date sub folders to scrape from this memory card:", length(visitDatesSubset)))
+  #   # grab image filepaths if there are values in visitDatesSubset
+  #   if (length(visitDatesSubset)>0){
+  #     for(i in 1:length(visitDatesSubset)){
+  #       #print(paste("i =",i))
+  #       OriginalFilePath <- list.files(paste(ExternalOrig,visitCard,"/",visitDatesSubset[i], sep = ""), full.names = TRUE)
+  #       print(paste("OriginalFilepath = ",OriginalFilePath))
+  #       FilePathOrig <- rbind(FilePathOrig, data.frame(OriginalFilePath) )
+  #     }
+  #   }
+  # }
+  # 
+  # # extract the photo 4 digit code from each file name
+  # FilePathOrig <- FilePathOrig %>% 
+  #   mutate(ExternalFileNumber = stringr::str_sub(OriginalFilePath,-8,-5))
+  # 
+  # 
+  # ### Find the matching files in the renamed folder following the schema doc ###
+  # # get the list of park sub folders from the renamed image folder
+  # visitParks <-list.files(ExternalSorted)
+  # # create empty dataframe
+  # FilePathRenamed <- data.frame(RenamedFilePath = character())
+  # 
+  # # grab image filepaths
+  # for(i in 1:length(visitParks)){
+  #   print(i)
+  #   RenamedFilePath <- list.files(paste(ExternalSorted,visitParks[i], sep = ""), full.names = TRUE)
+  #   print(RenamedFilePath)
+  #   FilePathRenamed <- rbind(FilePathRenamed, data.frame(RenamedFilePath) )
+  # }
+  # 
+  # # get the photo 4 digit code from each file name
+  # FilePathRenamed <- FilePathRenamed %>% 
+  #   mutate(ExternalFileNumber = stringr::str_sub(RenamedFilePath,-8,-5))
+  # 
+  # ## Join together both file path tables
+  # FilePathExternal <- FilePathOrig %>% 
+  #   left_join(FilePathRenamed, by = "ExternalFileNumber")
+  # 
+  # 
+  # ## join back to db$PhotoExt
+  # db$PhotoExt <- db$PhotoExt %>% 
+  #   left_join(FilePathExternal, by = "ExternalFileNumber") %>% 
+  #   select(-ExternalFileNumber)
   
-  
-  ## join back to db$PhotoExt
-  db$PhotoExt <- db$PhotoExt %>% 
-    left_join(FilePathExternal, by = "ExternalFileNumber") %>% 
-    select(-ExternalFileNumber)
-  
+  db$PhotoExt %<>% select(PhotoActivityID,
+                          DateTaken,
+                          PhotoDescriptionCodeID,
+                          IsLibraryPhotoID,
+                          OriginalFilePath,
+                          RenamedFilePath,
+                          GPSUnitID,
+                          HorizontalDatumID,
+                          UTMZoneID,
+                          UtmX_m,
+                          UtmY_m,
+                          Notes,
+                          GpsX,
+                          GpsY)
   PhotoExt.keys <- uploadData(db$PhotoExt, "data.Photo", conn, keep.guid = FALSE)
   
 }else{
