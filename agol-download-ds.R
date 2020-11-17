@@ -7,6 +7,8 @@
 ## Libraries and versions used: libraries specified in Main.R. Additional libraries for this R script: rstudioapi 0.11 
 ################################################################
 
+date_qry <- "DateTime < DATE '2020-10-01'"
+
 ## Get a token with a headless account - Warning! You need to know the password!
 token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",
                    body = list(username = rstudioapi::showPrompt("Username", "Please enter your AGOL username", default = "mojn_hydro"),
@@ -22,7 +24,7 @@ service_url = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/service
 ## Get AGOL desert springs (DS) spring visit point layer: MOJN_DS_SpringVisit
 ## create visit dataframe
 resp.visit <- GET(paste0(service_url, "/0/query"),
-                  query = list(where="1=1",
+                  query = list(where=date_qry,
                                outFields="*",
                                f="JSON",
                                token=agol_token$token))
@@ -35,6 +37,9 @@ visit <- visit$features$attributes %>%
   mutate(DateTime = as.POSIXct(DateTime/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
   rename(StartDateTime = DateTime)
 
+# visit_parentglobalid_qry <- paste0("parentglobalid IN (", paste0("'", visit$globalid[1:40], "'", collapse = ", "), ")")
+
+#visit_parentglobalid_qry <- "parentglobalid IN ('ed77c029-6c83-42ec-aeab-9ad123d370d5', 'fd444a72-b993-48fe-9118-7fb4f31b84a7')"
 ## get AGOL DS repeats point layer: Repeats
 ## create repeatPhoto dataframe
 resp.repeats <- GET(paste0(service_url, "/1/query"),
@@ -48,7 +53,10 @@ repeats <- cbind(repeats$features$attributes, repeats$features$geometry) %>%
   mutate(wkid = repeats$spatialReference$wkid) %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
+
+repeats_parentglobalid_qry <- paste0("parentglobalid IN (", paste0("'", repeats$globalid, "'", collapse = ", "), ")")
 
 ## get AGOL DS invasive plants point layer: InvasivePlants
 ## create invasives dataframe
@@ -63,7 +71,8 @@ invasives <- cbind(invasives$features$attributes, invasives$features$geometry) %
   mutate(wkid = invasives$spatialReference$wkid) %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 ## get AGOL DS observers table: Observers
 ## create observers dataframe
@@ -77,7 +86,8 @@ observers <- fromJSON(content(resp.observers, type = "text", encoding = "UTF-8")
 observers <- observers$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 
 ## get AGOL DS sensor retrieval table: SensorRetrieval
@@ -92,7 +102,8 @@ sensorRetrieval <- fromJSON(content(resp.sensorRetrieval, type = "text", encodin
 sensorRetrieval <- sensorRetrieval$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 
 ## get AGOL DS repeat photos-internal table: RepeatPhotos_Internal
@@ -108,6 +119,10 @@ repeatsInt <- repeatsInt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
+if (nrow(repeatsInt) > 0) {
+  repeatsInt %<>%
+    filter(parentglobalid %in% repeats$globalid)
+}
 
 
 ## get AGOL DS repeat photos-external table: RepeatPhotos_External
@@ -122,7 +137,8 @@ repeatsExt <- fromJSON(content(resp.repeatsExt, type = "text", encoding = "UTF-8
 repeatsExt <- repeatsExt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% repeats$globalid)
 
 
 ## get AGOL DS fill time table: FillTime
@@ -137,7 +153,8 @@ fillTime <- fromJSON(content(resp.fillTime, type = "text", encoding = "UTF-8"))
 fillTime <- fillTime$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 
 ## get AGOL DS Flow Mod Types table: FlowModTypes
@@ -152,7 +169,8 @@ disturbanceFlowMod <- fromJSON(content(resp.disturbanceFlowMod, type = "text", e
 disturbanceFlowMod <- disturbanceFlowMod$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 
 ## get AGOL DS Wildlife repeat table: WildlifeRepeat
@@ -167,7 +185,8 @@ wildlife <- fromJSON(content(resp.wildlife, type = "text", encoding = "UTF-8"))
 wildlife <- wildlife$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 
 ## get AGOL DS riparian Vegetation image repeat table: VegImageRepeat
@@ -182,8 +201,8 @@ riparianVeg  <- fromJSON(content(resp.riparianVeg, type = "text", encoding = "UT
 riparianVeg  <- riparianVeg$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
-
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 ## get AGOL DS riparian veg internal camera table: InternalCamera
 ## create riparianVegInt dataframe
@@ -198,6 +217,10 @@ riparianVegInt <- riparianVegInt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
+if (nrow(riparianVegInt) > 0) {
+  riparianVegInt %<>%
+    filter(parentglobalid %in% riparianVeg$globalid)
+}
 
 
 ## get AGOL DS riparian veg external Camera table: ExternalCameraFiles
@@ -212,7 +235,8 @@ riparianVegExt <- fromJSON(content(resp.riparianVegExt, type = "text", encoding 
 riparianVegExt <- riparianVegExt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% riparianVeg$globalid)
 
 
 ## get AGOL DS Invasive Image repeat table: InvImageRepeat
@@ -228,7 +252,10 @@ invasivesInt <- invasivesInt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
-
+if (nrow(invasivesInt) > 0) {
+  invasivesInt %<>%
+    filter(parentglobalid %in% invasives$globalid)
+}
 
 ## get AGOL DS Inv External CAmera Files table: ExternalCameraFilesInv
 ## create invasivesExt dataframe
@@ -242,7 +269,8 @@ invasivesExt  <- fromJSON(content(resp.invasivesExt , type = "text", encoding = 
 invasivesExt  <- invasivesExt $features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% invasives$globalid)
 
 
 ## get AGOL DS Additional Photos Files table: AdditionalPhotos2
@@ -257,8 +285,8 @@ additionalPhotos <- fromJSON(content(resp.additionalPhotos, type = "text", encod
 additionalPhotos <- additionalPhotos$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
-
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% visit$globalid)
 
 ## get AGOL DS Additional Photos Internal Files table: AdditionalPhotoInternal
 ## create additionalPhotosInt dataframe
@@ -273,7 +301,10 @@ additionalPhotosInt <- additionalPhotosInt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999)
-
+if (nrow(additionalPhotosInt) > 0) {
+  additionalPhotosInt %<>%
+    filter(parentglobalid %in% additionalPhotos$globalid)
+}
 
 ## get AGOL DS Additional Photos External Files table: AddtionalPhotoExternal
 ## create additionalPhotosExt dataframe
@@ -287,7 +318,8 @@ additionalPhotosExt <- fromJSON(content(resp.additionalPhotosExt, type = "text",
 additionalPhotosExt <- additionalPhotosExt$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
-  mutate_if(is.numeric, na_if, -9999)
+  mutate_if(is.numeric, na_if, -9999) %>%
+  filter(parentglobalid %in% additionalPhotos$globalid)
 
 
 ## this line if uncommented can remove all the tem,p "resp." list files and
