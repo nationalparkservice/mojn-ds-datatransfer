@@ -56,8 +56,6 @@ repeats <- cbind(repeats$features$attributes, repeats$features$geometry) %>%
   mutate_if(is.numeric, na_if, -9999) %>%
   filter(parentglobalid %in% visit$globalid)
 
-repeats_parentglobalid_qry <- paste0("parentglobalid IN (", paste0("'", repeats$globalid, "'", collapse = ", "), ")")
-
 ## get AGOL DS invasive plants point layer: InvasivePlants
 ## create invasives dataframe
 resp.invasives <- GET(paste0(service_url, "/2/query"),
