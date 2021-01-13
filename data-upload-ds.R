@@ -10,38 +10,38 @@
 
 #---------Variables used---------------------# uncomment either the testing set or the real set 
 
-# # set this to the location of the downloaded FGDB from AGOL
-# # filepaths for testing import:
-# gdb.path <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\MOJN_DS_SpringVisit_20201002.gdb" 
-# photo.dest <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\Renamed"
-# originals.dest <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\Originals"
-# db.params.path <- "C:\\Users\\sewright\\Desktop\\DSPhotoDownloadTest\\ds-database-conn.csv"
-# ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/"
-# ExternalSorted <- photo.dest
-# # date range of survey year (used for external image file path wrangling)
-# surveyYearStart <- "2020_08_01"
-# surveyYearEnd <- "2020_10_01"
-# # variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
-# UTMcode11 <-"+init=epsg:26911"
-# UTMcode12 <-"+init=epsg:26912"
-# DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but check from AGOL
-# 
-
-
-# filepaths for the real import:
-gdb.path <- "C:/Users/sewright/Desktop/DSPhotoDownloadTest/MOJN_DS_SpringVisit_20201002.gdb"
-photo.dest <- "M:/MONITORING/DS_Water/Data/Images"
-originals.dest <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/AGOL_DS"
-db.params.path <- "M:/MONITORING/DS_Water/Data/Database/ConnectFromR/ds-database-conn.csv"
-ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify"
+# set this to the location of the downloaded FGDB from AGOL
+# filepaths for testing import:
+gdb.path <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\MOJN_DS_SpringVisit-TEST.gdb"
+photo.dest <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\Photos_DS"
+originals.dest <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\Photo_Originals"
+db.params.path <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\\\ds-database-conn.csv"
+ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/"
 ExternalSorted <- photo.dest
 # date range of survey year (used for external image file path wrangling)
 surveyYearStart <- "2020_08_01"
 surveyYearEnd <- "2020_10_01"
-# variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
+# variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
 UTMcode11 <-"+init=epsg:26911"
 UTMcode12 <-"+init=epsg:26912"
-DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change
+DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but check from AGOL
+
+
+
+# # filepaths for the real import:
+# gdb.path <- "C:/Users/sewright/Desktop/DSPhotoDownloadTest/MOJN_DS_SpringVisit_20201002.gdb"
+# photo.dest <- "M:/MONITORING/DS_Water/Data/Images"
+# originals.dest <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/AGOL_DS"
+# db.params.path <- "M:/MONITORING/DS_Water/Data/Database/ConnectFromR/ds-database-conn.csv"
+# ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify"
+# ExternalSorted <- photo.dest
+# # date range of survey year (used for external image file path wrangling)
+# surveyYearStart <- "2020_08_01"
+# surveyYearEnd <- "2020_10_01"
+# # variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
+# UTMcode11 <-"+init=epsg:26911"
+# UTMcode12 <-"+init=epsg:26912"
+# DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change
 
 
 #--------------------------------------------------------------------------------#
@@ -408,8 +408,8 @@ SpringbrookDim.keys <-uploadData(db$SpringbrookDim , "data.SpringbrookDimensions
 
 
 ## Water Quality Activity table - collects record whether WQ data was collected or not
-db$WQactivity <- visit %>% 
-  inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>% 
+db$WQactivity <- visit %>%
+  inner_join(visit.keys, by = c("globalid" = "GlobalID")) %>%
   select(VisitID = ID,
          GlobalID = globalid,
          WaterQualityDataCollectedID = WasWaterQualityDataCollected,
@@ -417,7 +417,11 @@ db$WQactivity <- visit %>%
          DOInstrumentID = DOInstrument,
          SpCondInstrumentID = SpCondInstrument,
          TemperatureInstrumentID = TemperatureInstrument,
-         Notes = WQNotes) %>% 
+         Notes = WQNotes,
+         pHDataQualityFlagID = pH_Flag,
+         DissolvedOxygenDataQualityFlagID = DO_Flag,
+         SpecificConductanceDataQualityFlagID = SpCond_microS_Flag,
+         WaterTemperatureDataQualityFlagID = Temp_C_Flag) %>%
   mutate(DataProcessingLevelID = 1)  # Raw DPL
 
 WQactivity.keys <-uploadData(db$WQactivity, "data.WaterQualityActivity", conn,
@@ -425,32 +429,29 @@ WQactivity.keys <-uploadData(db$WQactivity, "data.WaterQualityActivity", conn,
 
 
 ## Water Quality DO table
-DO1 <- visit %>% 
-  inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+DO1 <- visit %>%
+  inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>%
+  filter(!is.na(DO_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_1,
-         DissolvedOxygen_percent = DissolvedOxygen_percent_1,
-         DataQualityFlagID = DO_1Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         DissolvedOxygen_percent = DissolvedOxygen_percent_1)
 
 DO2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na(DO_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_2,
-         DissolvedOxygen_percent = DissolvedOxygen_percent_2,
-         DataQualityFlagID = DO_2Flag)%>% 
-  filter(!is.na (DataQualityFlagID))
+         DissolvedOxygen_percent = DissolvedOxygen_percent_2)
 
 DO3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na(DO_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_3,
-         DissolvedOxygen_percent = DissolvedOxygen_percent_3,
-         DataQualityFlagID = DO_3Flag)%>% 
-  filter(!is.na (DataQualityFlagID))
+         DissolvedOxygen_percent = DissolvedOxygen_percent_3)
 
 db$WQ_DO <- rbind(DO1, DO2, DO3) %>% 
   arrange(WaterQualityActivityID)
@@ -461,27 +462,24 @@ WQ_DO.keys <-uploadData(db$WQ_DO, "data.WaterQualityDO", conn, keep.guid = FALSE
 ## Water Quality pH table
 pH1 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (pH_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         pH = pH_1,
-         DataQualityFlagID = pH_1Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
-
+         pH = pH_1)
+  
 pH2 <- visit %>% 
-  inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>%
+  filter(!is.na (pH_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         pH = pH_2,
-         DataQualityFlagID = pH_2Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         pH = pH_2)
 
 pH3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (pH_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         pH = pH_3,
-         DataQualityFlagID = pH_3Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         pH = pH_3)
 
 db$WQ_pH <- rbind(pH1, pH2, pH3) %>% 
   arrange(WaterQualityActivityID)
@@ -493,27 +491,24 @@ WQ_pH.keys <-uploadData(db$WQ_pH, "data.WaterQualitypH", conn,
 ## Water Quality SpCond table
 spCond1 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (SpCond_microS_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         SpecificConductance_microS_per_cm = SpecificConductance_microS_1,
-         DataQualityFlagID = SpCond_microS_1Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         SpecificConductance_microS_per_cm = SpecificConductance_microS_1)
 
 spCond2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (SpCond_microS_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         SpecificConductance_microS_per_cm = SpecificConductance_microS_2,
-         DataQualityFlagID = SpCond_microS_2Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         SpecificConductance_microS_per_cm = SpecificConductance_microS_2)
 
 spCond3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (SpCond_microS_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         SpecificConductance_microS_per_cm = SpecificConductance_microS_3,
-         DataQualityFlagID = SpCond_microS_3Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         SpecificConductance_microS_per_cm = SpecificConductance_microS_3)
 
 db$WQ_SpCond<- rbind(spCond1, spCond2, spCond3) %>% 
   arrange(WaterQualityActivityID)
@@ -526,27 +521,24 @@ WQ_SpCond.keys <-uploadData(db$WQ_SpCond, "data.WaterQualitySpCond", conn,
 ## Water Quality Temp C table
 tempC1 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (Temp_C_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         WaterTemperature_C = Temperature_C_1,
-         DataQualityFlagID = Temp_C_1Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         WaterTemperature_C = Temperature_C_1)
 
 tempC2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (Temp_C_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         WaterTemperature_C = Temperature_C_2,
-         DataQualityFlagID = Temp_C_2Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         WaterTemperature_C = Temperature_C_2)
 
 tempC3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  filter(!is.na (Temp_C_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         WaterTemperature_C = Temperature_C_3,
-         DataQualityFlagID = Temp_C_3Flag) %>% 
-  filter(!is.na (DataQualityFlagID))
+         WaterTemperature_C = Temperature_C_3)
 
 
 db$WQ_tempC<- rbind(tempC1, tempC2, tempC3) %>% 
