@@ -86,6 +86,8 @@ observers <- observers$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
   filter(parentglobalid %in% visit$globalid)
 
 

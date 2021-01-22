@@ -31,7 +31,7 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
     placeholders <- rep("?", length(names(df)))
     placeholders <- paste(placeholders, collapse = ", ")
     sql.insert <- paste0("MERGE ", table.name, " t USING dbo.TempSource s ","ON (s.GlobalID = t.GlobalID) WHEN MATCHED THEN UPDATE SET ", updateSet," WHEN NOT MATCHED BY TARGET THEN INSERT (", cols, ") VALUES (", scols, ") ",
-                         "OUTPUT ", paste0("INSERTED.", colnames.key, collapse = ", "), ", INSERTED.", col.guid, " INTO InsertOutput ;")
+                         "OUTPUT ", paste0("INSERTED.", colnames.key, collapse = ", "), ", INSERTED.", col.guid, ", $action INTO InsertOutput ;")
     
 
   } else if (has.guid & !keep.guid) {  # Create temporary GUID column in order to return a GUID-ID crosswalk
@@ -69,7 +69,7 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
   
   
   
-  # # insert temp target table - for testing. The merge works but not with the insert output
+  # insert temp target table - for testing. The merge works but not with the insert output
   # poolWithTransaction(pool = conn, func = function(conn) {
   #   #dbCreateTable(conn, "TempSource", df)
   #   #dbAppendTable(conn, "TempSource", df)
@@ -89,6 +89,7 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
   keys <- poolWithTransaction(pool = conn, func = function(conn) {
     temp.types <- cols.key
     temp.types[[col.guid]] <- character()
+    temp.types[["$action"]] <- character()
     temp.table <- tibble(!!!temp.types)
     dbCreateTable(conn, "InsertOutput", temp.table)
     # add temp tables
@@ -111,6 +112,7 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
     dbClearResult(res)
 
     dbRemoveTable(conn, "InsertOutput")
+    dbRemoveTable(conn, "TempSource")
 
     # If needed, delete the temporary GUID column
     if (str_length(sql.after) > 0) {

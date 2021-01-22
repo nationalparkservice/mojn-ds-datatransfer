@@ -47,7 +47,7 @@ DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but chec
 #--------------------------------------------------------------------------------#
 
 
-#------------ Lookup tables form SQL database used ------------------------------#
+#------------ Lookup tables from SQL database used ------------------------------#
 ## Get Site table from SQL database
 params <- readr::read_csv(db.params.path) %>% 
   as.list()
@@ -61,6 +61,13 @@ visitIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "Visit")) %>%
   dplyr::collect() %>% 
   dplyr::select(ID,GlobalID,Survey123_LastEditedDate) %>% 
   dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
+
+## get Visit PersonalID's, Global ID's, and last edited date to compare with source data from Survey123 observer table
+visitPersonelIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "VisitPersonnel")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(VisitID,GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
 
 ## Get lookups of all photo codes for photo naming. 
 # These are used for naming the internal photos and getting the photo description code
@@ -247,14 +254,14 @@ sensorRetrievalNulls <- sensorRetrieval %>%
   filter(is.na(SensorIDRet)) # gets those extra sensor retrieval records
 
 # build the visit table of records that are new or have been updated ( convert dates to chars for compare only)
-test <- visit %>% 
+baseV <- visit %>% 
   left_join(visitIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
   filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
 
 # test for rows to insert- creates a set of new and updated rows
-if (nrow(test)>0){
-  print(paste0(nrow(test)," rows to import or update"))
-  db$Visit <- test %>%
+if (nrow(baseV)>0){
+  print(paste0(nrow(baseV)," rows to import or update"))
+  db$Visit <- baseV %>%
     left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
     select(SiteID,
            StartDateTime,
@@ -276,43 +283,38 @@ if (nrow(test)>0){
 }else{
   print("No rows to import - you should exit this procedure")
 }
-  
-
-
-# db$Visit <- visit %>%
-#   left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
-#   select(SiteID,
-#          StartDateTime,
-#          Notes = SpringComments,
-#          SensorRetrieveNotes,
-#          GlobalID = globalid,
-#          SpringTypeID = SpringType,
-#          VisitTypeID = VisitType,
-#          MonitoringStatusID = Status,
-#          ProtocolID,
-#          Survey123_LastEditedDate) %>%
-#   mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
-#          VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
-#          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
-#          Survey123_LastEditedDate = format.Date(Survey123_LastEditedDate,"%Y-%m-%d %H:%M:%S"),
-#          DataProcessingLevelID = 1) %>% 
-#   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
-#   select(-StartDateTime, -SensorRetrieveNotes)
 
 # Insert into Visit table in database
 visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = TRUE)
 
+## need to make a full visit keys list of all guids and IDs not just the new ones so need to merge visit keys with visit IDs
+fullVisit.keys <- visit.keys %>% 
+  select(ID, GlobalID) %>% 
+  union(rename(subset(visitIDs, select = c(SQL.ID, SQL.GlobalID)),
+               ID = SQL.ID, GlobalID = SQL.GlobalID ))
 
+
+
+# build the visit personel table of records that are new or have been updated (convert dates to chars for compare only)
+baseVP <- observers %>% 
+  left_join(visitPersonelIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(VisitID))
 
 ## Visit Personnel table
-db$VisitPersonnel <- observers %>%
-  inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
-  select(VisitID = ID,
-         GlobalID = globalid,
-         PersonnelID = FieldCrew) %>%
-  mutate(PersonnelRoleID = 5)  # Code for Field crew
+if (nrow(baseVP)>0){
+  print(paste0(nrow(baseVP)," rows to import or update from visit"))
+  db$VisitPersonnel <- baseVP %>%
+    inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+    select(VisitID = ID,
+           GlobalID = globalid,
+           PersonnelID = FieldCrew,
+           Survey123_LastEditedDate) %>%
+    mutate(PersonnelRoleID = 5)  # Code for Field crew
+}else{
+  print("No rows to import")
+}
 
-personnel.keys <- uploadData(db$VisitPersonnel, "data.VisitPersonnel", conn,keep.guid = FALSE, 
+personnel.keys <- uploadData(db$VisitPersonnel, "data.VisitPersonnel", conn,keep.guid = TRUE, 
                              cols.key = list(VisitID = integer(), 
                                              PersonnelID = integer(), 
                                              PersonnelRoleID = integer()))
@@ -329,12 +331,12 @@ db$SensorDeploy <- visit %>%
   mutate(DeploymentTimeOfDay= paste("1899-12-30 ",DeploymentTime, ":00", sep = "")) %>% 
   select(-DeploymentTime)
 
-sensorDep.keys <- uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep.guid = FALSE)
+sensorDep.keys <- uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep.guid = TRUE)
 
 ## get sensor to deployment ID crosswalk table to import sensor retrieval data
 SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
   dplyr::collect() 
-
+##############################################
 # ## sensor retrieval table - USE NEXT YEAR
 # if (any(is.na(sensorRetrieval$SensorIDRet))){
 #   print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
@@ -388,7 +390,7 @@ db$SensorRetrieval <- sensorRetrieval %>%
   select(-RetrievalTime, -DownloadSuccessful)
 
 sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
-
+################################### come back to sensor retrieval table! ############
 
 ## flow discharge activity table
 db$DischargeFlow <- visit %>% 
@@ -400,7 +402,7 @@ db$DischargeFlow <- visit %>%
   mutate(DataProcessingLevelID = 1)  # For Raw Data processing level
 
 dischargeFlow.keys <-uploadData(db$DischargeFlow , "data.DischargeActivity", conn,
-                                keep.guid = FALSE)
+                                keep.guid = TRUE)
 
 
 ## estimated discharge table
@@ -414,7 +416,7 @@ db$DischargeEst <- visit %>%
   select(-DischargeMethod)
 
 dischargeEst.keys <-uploadData(db$DischargeEst , "data.DischargeEstimatedObservation", conn, 
-                               keep.guid = FALSE)
+                               keep.guid = TRUE)
 
 
 ## Discharge volumetric table
@@ -429,7 +431,7 @@ db$DischargeVol <- visit %>%
          EstimatedCapture_percent = EstimatedCapture_Percent)
 
 dischargeVOL.keys <-uploadData(db$DischargeVol , "data.DischargeVolumetricObservation", conn,
-                               keep.guid = FALSE)
+                               keep.guid = TRUE)
 
 
 ## Spring Brook dimensions
@@ -443,7 +445,7 @@ db$SpringbrookDim <- visit %>%
          Notes = ChannelDescription)
 
 SpringbrookDim.keys <-uploadData(db$SpringbrookDim , "data.SpringbrookDimensions", conn,
-                                 keep.guid = FALSE)
+                                 keep.guid = TRUE)
 
 
 ## Water Quality Activity table - collects record whether WQ data was collected or not
@@ -464,7 +466,7 @@ db$WQactivity <- visit %>%
   mutate(DataProcessingLevelID = 1)  # Raw DPL
 
 WQactivity.keys <-uploadData(db$WQactivity, "data.WaterQualityActivity", conn,
-                             keep.guid = FALSE)
+                             keep.guid = TRUE)
 
 
 ## Water Quality DO table
@@ -474,7 +476,8 @@ DO1 <- visit %>%
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_1,
-         DissolvedOxygen_percent = DissolvedOxygen_percent_1)
+         DissolvedOxygen_percent = DissolvedOxygen_percent_1) %>% 
+  mutate(GlobalID = paste0(GlobalID,"_1"))
 
 DO2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
@@ -482,7 +485,8 @@ DO2 <- visit %>%
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_2,
-         DissolvedOxygen_percent = DissolvedOxygen_percent_2)
+         DissolvedOxygen_percent = DissolvedOxygen_percent_2)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_2"))
 
 DO3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
@@ -490,12 +494,14 @@ DO3 <- visit %>%
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_3,
-         DissolvedOxygen_percent = DissolvedOxygen_percent_3)
+         DissolvedOxygen_percent = DissolvedOxygen_percent_3)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_3"))
+
 
 db$WQ_DO <- rbind(DO1, DO2, DO3) %>% 
   arrange(WaterQualityActivityID)
 
-WQ_DO.keys <-uploadData(db$WQ_DO, "data.WaterQualityDO", conn, keep.guid = FALSE)
+WQ_DO.keys <-uploadData(db$WQ_DO, "data.WaterQualityDO", conn, keep.guid = TRUE)
 
 
 ## Water Quality pH table
@@ -504,27 +510,30 @@ pH1 <- visit %>%
   filter(!is.na (pH_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         pH = pH_1)
+         pH = pH_1)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_1"))
   
 pH2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>%
   filter(!is.na (pH_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         pH = pH_2)
+         pH = pH_2)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_2"))
 
 pH3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(!is.na (pH_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         pH = pH_3)
+         pH = pH_3)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_3"))
 
 db$WQ_pH <- rbind(pH1, pH2, pH3) %>% 
   arrange(WaterQualityActivityID)
 
 WQ_pH.keys <-uploadData(db$WQ_pH, "data.WaterQualitypH", conn, 
-                        keep.guid = FALSE)
+                        keep.guid = TRUE)
 
 
 ## Water Quality SpCond table
@@ -533,27 +542,30 @@ spCond1 <- visit %>%
   filter(!is.na (SpCond_microS_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         SpecificConductance_microS_per_cm = SpecificConductance_microS_1)
+         SpecificConductance_microS_per_cm = SpecificConductance_microS_1)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_1"))
 
 spCond2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(!is.na (SpCond_microS_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         SpecificConductance_microS_per_cm = SpecificConductance_microS_2)
+         SpecificConductance_microS_per_cm = SpecificConductance_microS_2)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_2"))
 
 spCond3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(!is.na (SpCond_microS_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         SpecificConductance_microS_per_cm = SpecificConductance_microS_3)
+         SpecificConductance_microS_per_cm = SpecificConductance_microS_3)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_3"))
 
 db$WQ_SpCond<- rbind(spCond1, spCond2, spCond3) %>% 
   arrange(WaterQualityActivityID)
 
 WQ_SpCond.keys <-uploadData(db$WQ_SpCond, "data.WaterQualitySpCond", conn, 
-                            keep.guid = FALSE)
+                            keep.guid = TRUE)
 
 
 
@@ -563,30 +575,33 @@ tempC1 <- visit %>%
   filter(!is.na (Temp_C_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         WaterTemperature_C = Temperature_C_1)
+         WaterTemperature_C = Temperature_C_1)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_1"))
 
 tempC2 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(!is.na (Temp_C_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         WaterTemperature_C = Temperature_C_2)
+         WaterTemperature_C = Temperature_C_2)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_2"))
 
 tempC3 <- visit %>% 
   inner_join(WQactivity.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(!is.na (Temp_C_Flag)) %>% 
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
-         WaterTemperature_C = Temperature_C_3)
+         WaterTemperature_C = Temperature_C_3)%>% 
+  mutate(GlobalID = paste0(GlobalID,"_3"))
 
 
 db$WQ_tempC<- rbind(tempC1, tempC2, tempC3) %>% 
   arrange(WaterQualityActivityID)
 
 WQ_tempC.keys <-uploadData(db$WQ_tempC, "data.WaterQualityTemperature", conn,
-                           keep.guid = FALSE)
+                           keep.guid = TRUE)
 
-
+#### GOT TO HERE ##########
 
 ## Disturbance Activity table
 db$DisturbanceActivity <- visit %>% 
