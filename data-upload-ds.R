@@ -56,6 +56,12 @@ conn <- do.call(pool::dbPool, params)
 sites <- dplyr::tbl(conn, dbplyr::in_schema("data", "Site")) %>%
   dplyr::collect()
 
+## get Visit ID's, Global ID's, and last edited date to compare with source data from Survey123
+visitIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "Visit")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID,GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
 ## Get lookups of all photo codes for photo naming. 
 # These are used for naming the internal photos and getting the photo description code
 # Used when importing data into [data].[photos]
@@ -222,16 +228,16 @@ db <- list()
 #          GlobalID = globalid,
 #          SpringTypeID = SpringType,
 #          VisitTypeID = VisitType,
-#          MonitoringStatusID = Status) %>%
+#          MonitoringStatusID = Status,
+#          ProtocolID,
+#          Survey123_LastEditedDate = EditDate) %>%
 #   mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
 #          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
-#          DataProcessingLevelID = 1,  # Raw
-#          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
-#          ) %>%
+#          DataProcessingLevelID = 1 ) %>%
 #   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
 #   select(-StartDateTime)
-# 
-# # Insert into Visit table in database
+
+# Insert into Visit table in database
 # visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
 
 
@@ -240,28 +246,61 @@ db <- list()
 sensorRetrievalNulls <- sensorRetrieval %>% 
   filter(is.na(SensorIDRet)) # gets those extra sensor retrieval records
 
-db$Visit <- visit %>%
-  left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
-  select(SiteID,
-         StartDateTime,
-         Notes = SpringComments,
-         SensorRetrieveNotes,
-         GlobalID = globalid,
-         SpringTypeID = SpringType,
-         VisitTypeID = VisitType,
-         MonitoringStatusID = Status) %>%
-  mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
-          VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
-         #StartTime = format.Date(StartDateTime, "%H:%M:%S"),
-         StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
-         DataProcessingLevelID = 1,  # Raw
-         ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
-         ) %>%
-  left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
-  select(-StartDateTime, -SensorRetrieveNotes)
+# build the visit table of records that are new or have been updated ( convert dates to chars for compare only)
+test <- visit %>% 
+  left_join(visitIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
+
+# test for rows to insert- creates a set of new and updated rows
+if (nrow(test)>0){
+  print(paste0(nrow(test)," rows to import or update"))
+  db$Visit <- test %>%
+    left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
+    select(SiteID,
+           StartDateTime,
+           Notes = SpringComments,
+           SensorRetrieveNotes,
+           GlobalID = globalid,
+           SpringTypeID = SpringType,
+           VisitTypeID = VisitType,
+           MonitoringStatusID = Status,
+           ProtocolID,
+           Survey123_LastEditedDate) %>%
+    mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
+           VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
+           StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
+           Survey123_LastEditedDate = format.Date(Survey123_LastEditedDate,"%Y-%m-%d %H:%M:%S"),
+           DataProcessingLevelID = 1) %>% 
+    left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
+    select(-StartDateTime, -SensorRetrieveNotes)
+}else{
+  print("No rows to import - you should exit this procedure")
+}
+  
+
+
+# db$Visit <- visit %>%
+#   left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
+#   select(SiteID,
+#          StartDateTime,
+#          Notes = SpringComments,
+#          SensorRetrieveNotes,
+#          GlobalID = globalid,
+#          SpringTypeID = SpringType,
+#          VisitTypeID = VisitType,
+#          MonitoringStatusID = Status,
+#          ProtocolID,
+#          Survey123_LastEditedDate) %>%
+#   mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
+#          VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
+#          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
+#          Survey123_LastEditedDate = format.Date(Survey123_LastEditedDate,"%Y-%m-%d %H:%M:%S"),
+#          DataProcessingLevelID = 1) %>% 
+#   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
+#   select(-StartDateTime, -SensorRetrieveNotes)
 
 # Insert into Visit table in database
-visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
+visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = TRUE)
 
 
 

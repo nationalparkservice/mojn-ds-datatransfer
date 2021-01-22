@@ -19,15 +19,20 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
   
   if (has.guid & keep.guid) {  # GUID permanently stored in DB
     cols <- names(df)  # Assume names of columns, incl. GUID column, match those in the database exactly
+    tcols <- paste0("t.", cols) # target columns
+    scols <- paste0("s.", cols) # source survey123 columns
+    updateSet <- paste0(tcols," = ",scols) # matching the column names
+    
     cols <- paste(cols, collapse = ", ")
+    tcols <- paste(tcols, collapse = ", ")
+    scols <- paste(scols, collapse = ", ")
+    updateSet <- paste(updateSet, collapse = ", ")
     
     placeholders <- rep("?", length(names(df)))
     placeholders <- paste(placeholders, collapse = ", ")
-    sql.insert <- paste0("INSERT INTO ", table.name, "(", cols, ") ",
-                         "OUTPUT ", paste0("INSERTED.", colnames.key, collapse = ", "), ", INSERTED.", col.guid, " INTO InsertOutput ",
-                         "VALUES (",
-                         placeholders,
-                         ") ")
+    sql.insert <- paste0("MERGE ", table.name, " t USING dbo.TempSource s ","ON (s.GlobalID = t.GlobalID) WHEN MATCHED THEN UPDATE SET ", updateSet," WHEN NOT MATCHED BY TARGET THEN INSERT (", cols, ") VALUES (", scols, ") ",
+                         "OUTPUT ", paste0("INSERTED.", colnames.key, collapse = ", "), ", INSERTED.", col.guid, " INTO InsertOutput ;")
+    
 
   } else if (has.guid & !keep.guid) {  # Create temporary GUID column in order to return a GUID-ID crosswalk
     cols <- names(df)
@@ -57,7 +62,27 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
                          ") ")
   }
   
+  print(sql.insert)# testing
+  print(scols) # testing
+  
   sql.inserted <- "SELECT * FROM InsertOutput"
+  
+  
+  
+  # # insert temp target table - for testing. The merge works but not with the insert output
+  # poolWithTransaction(pool = conn, func = function(conn) {
+  #   #dbCreateTable(conn, "TempSource", df)
+  #   #dbAppendTable(conn, "TempSource", df)
+  #   dbRemoveTable(conn, "TempSource")
+  # 
+  #   #qry <- dbSendQuery(conn, sql.insert)
+  #   #dbBind(qry, as.list(df))
+  #   #dbBind(qry, df)
+  #   #dbFetch(qry)
+  #   #dbClearResult(qry)
+  #   })
+  
+
   
   # Perform insert
   keys <- tibble()
@@ -66,32 +91,35 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
     temp.types[[col.guid]] <- character()
     temp.table <- tibble(!!!temp.types)
     dbCreateTable(conn, "InsertOutput", temp.table)
-    
+    # add temp tables
+    dbCreateTable(conn, "TempSource", df)
+    dbAppendTable(conn, "TempSource", df)
+
     # If needed, create a temporary column to store the GUID
     if (str_length(sql.before) > 0) {
       dbSendQuery(conn, sql.before)
     }
-    
+
     qry <- dbSendQuery(conn, sql.insert)
-    dbBind(qry, as.list(df))
+    #dbBind(qry, as.list(df))
     dbFetch(qry)
     dbClearResult(qry)
-    
+
     res <- dbSendQuery(conn, sql.inserted)
     inserted <- dbFetch(res) %>%
       as_tibble()
     dbClearResult(res)
-    
+
     dbRemoveTable(conn, "InsertOutput")
-    
+
     # If needed, delete the temporary GUID column
     if (str_length(sql.after) > 0) {
       dbSendQuery(conn, sql.after)
     }
-    
+
     return(inserted)
   })
-  
+
   if (!has.guid) {
     keys <- select(keys, ID)
   }

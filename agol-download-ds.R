@@ -34,8 +34,9 @@ visit <- visit$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
   mutate(DateTime = as.POSIXct(DateTime/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
-  rename(StartDateTime = DateTime)
+  rename(StartDateTime = DateTime, Survey123_LastEditedDate = EditDate)
 
 # visit_parentglobalid_qry <- paste0("parentglobalid IN (", paste0("'", visit$globalid[1:40], "'", collapse = ", "), ")")
 
