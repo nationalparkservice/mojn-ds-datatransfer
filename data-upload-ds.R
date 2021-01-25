@@ -56,18 +56,70 @@ conn <- do.call(pool::dbPool, params)
 sites <- dplyr::tbl(conn, dbplyr::in_schema("data", "Site")) %>%
   dplyr::collect()
 
-## get Visit ID's, Global ID's, and last edited date to compare with source data from Survey123
+## get ID fields from SQL tables where there is a matching table in Survey123 ( usually child/repeat tables)
+# these are used to compare the last edited date from the source table in Survey123
+## get Visit table ID's, Global ID's, and last edited date 
 visitIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "Visit")) %>% 
   dplyr::collect() %>% 
   dplyr::select(ID,GlobalID,Survey123_LastEditedDate) %>% 
   dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
 
 
-## get Visit PersonalID's, Global ID's, and last edited date to compare with source data from Survey123 observer table
+## get Visit Personal table ID's, Global ID's, and last edited date. Compare with s123 observer table
 visitPersonelIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "VisitPersonnel")) %>% 
   dplyr::collect() %>% 
   dplyr::select(VisitID,GlobalID,Survey123_LastEditedDate) %>% 
   dplyr::rename(SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
+
+## get Disturbance Activity table ID, Global ID's for making a full list to filter child table on
+DistActivityIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "DisturbanceActivity")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID)
+
+## get Disturbance Flow Modification table ID, Activity ID ( parent table) Global ID's, and last edited date. Compare with s123 FlowModTypes table
+DistFlowModIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "DisturbanceFlowModification")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
+## get Wildlife Activity table ID, Global ID's for making a full list to filter child table on
+WildActivityIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "WildlifeActivity")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID)
+
+## get Wildlife Observation table ID, Global ID's, and last edited date. Compare with s123 WildlifeRepeat table
+WildObsIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "WildlifeObservation")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
+## get Invasive Activity table ID, Global ID's for making a full list to filter child table on
+InvasiveActivityIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "InvasivesActivity")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID)
+
+## get Invasives Observation table ID, Global ID's, and last edited date. Compare with s123 InvasivePlants point layer
+InvasiveObsIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "InvasivesObservation")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
+## get Repeat Photo Activity table ID, Global ID's for making a full list to filter child table on
+RepPhotoActivityIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "RepeatPhotoActivity")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID)
+
+## get Invasives Observation table ID, Global ID's, and last edited date. Compare with s123 InvasivePlants point layer
+RepeatObsIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "RepeatPhotoObservation")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
 
 ## Get lookups of all photo codes for photo naming. 
 # These are used for naming the internal photos and getting the photo description code
@@ -302,7 +354,7 @@ baseVP <- observers %>%
 
 ## Visit Personnel table
 if (nrow(baseVP)>0){
-  print(paste0(nrow(baseVP)," rows to import or update from visit"))
+  print(paste0(nrow(baseVP)," rows to import or update from visit observers"))
   db$VisitPersonnel <- baseVP %>%
     inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
     select(VisitID = ID,
@@ -600,8 +652,8 @@ db$WQ_tempC<- rbind(tempC1, tempC2, tempC3) %>%
 
 WQ_tempC.keys <-uploadData(db$WQ_tempC, "data.WaterQualityTemperature", conn,
                            keep.guid = TRUE)
+########################################################################################
 
-#### GOT TO HERE ##########
 
 ## Disturbance Activity table
 db$DisturbanceActivity <- visit %>% 
@@ -624,18 +676,35 @@ db$DisturbanceActivity <- visit %>%
   mutate(DataProcessingLevelID = 1)  # Raw DPL
 
 DisturbanceActivity.keys <-uploadData(db$DisturbanceActivity, "data.DisturbanceActivity", conn, 
-                                      keep.guid = FALSE)
+                                      keep.guid = TRUE)
 
 
-## Disturbance Flow Modification table
-db$DisturbanceMod <-disturbanceFlowMod%>% 
-  inner_join(DisturbanceActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
-  select(DisturbanceActivityID = ID,
-         GlobalID = globalid,
-         ModificationTypeID = ModificationType)
+## Disturbance Flow Modification table- related table so have to compare edited dates directly
+# build the FlowModTypes table of records that are new or have been updated (convert dates to chars for compare only)
+baseDFM <- disturbanceFlowMod %>% 
+  left_join(DistFlowModIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
+
+## need to make a full disturbanc activity keys list of all guids and IDs not just the new ones so need to merge disturbanceActivity keys with DistActivityIDs
+fullDistActivity.keys <- DisturbanceActivity.keys %>% 
+  select(ID, GlobalID) %>% 
+  union(rename(subset(DistActivityIDs, select = c(SQL.ID, SQL.GlobalID)),
+               ID = SQL.ID, GlobalID = SQL.GlobalID ))
+if (nrow(baseDFM)>0){
+  print(paste0(nrow(baseDFM)," rows to import or update from table FlowModTypes"))
+  db$DisturbanceMod <-disturbanceFlowMod%>% 
+    inner_join(fullDistActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
+    select(DisturbanceActivityID = ID,
+           GlobalID = globalid,
+           ModificationTypeID = ModificationType,
+           Survey123_LastEditedDate)
+}else{
+  print("No rows to import")
+}
+
 
 DisturbanceMod.keys <-uploadData(db$DisturbanceMod, "data.DisturbanceFlowModification", conn,
-                                 keep.guid = FALSE)
+                                 keep.guid = TRUE)
 
 
 # Wildlife Activity table - Creates record whether wildlife were observed or not
@@ -647,27 +716,43 @@ db$WildlifeActivity <- visit %>%
   mutate(DataProcessingLevelID = 1)  # Raw DPL
 
 WildlifeActivity.keys <-uploadData(db$WildlifeActivity, "data.WildlifeActivity", conn,
-                                   keep.guid = FALSE)
+                                   keep.guid = TRUE)
 
+## wildlife observation table - related table so have to compare edited dates directly
+# build the WildlifeRepeats table of records that are new or have been updated (convert dates to chars for compare only)
+baseWO <- wildlife %>% 
+  left_join(WildObsIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
 
-## wildlife observation table
-db$WildlifeObservation <- wildlife %>% 
-  inner_join(WildlifeActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
-  select(WildlifeActivityID= ID,
-         GlobalID = globalid,
-         WildlifeTypeID = WildlifeType,
-         DirectObservation,
-         Scat,
-         Tracks,
-         Shelter,
-         Foraging,
-         Vocalization,
-         OtherEvidence,
-         Notes = Species_Notes) %>% 
-  mutate_at(c(3:10), ~replace(., is.na(.), 9)) # replaces NA with "No Data" code
+## need to make a full wildlife activity keys list of all guids and IDs not just the new ones so need to merge wildlifeActivity keys with WildActivityIDs
+fullWildActivity.keys <- WildlifeActivity.keys %>% 
+  select(ID, GlobalID) %>% 
+  union(rename(subset(WildActivityIDs, select = c(SQL.ID, SQL.GlobalID)),
+               ID = SQL.ID, GlobalID = SQL.GlobalID ))
+
+if (nrow(baseWO)>0){
+  print(paste0(nrow(baseWO)," rows to import or update from table WildlifeRepeat"))
+  db$WildlifeObservation <- wildlife %>% 
+    inner_join(fullWildActivity.keys, by = c("parentglobalid" = "GlobalID")) %>% 
+    select(WildlifeActivityID= ID,
+           GlobalID = globalid,
+           WildlifeTypeID = WildlifeType,
+           DirectObservation,
+           Scat,
+           Tracks,
+           Shelter,
+           Foraging,
+           Vocalization,
+           OtherEvidence,
+           Notes = Species_Notes,
+           Survey123_LastEditedDate) %>% 
+    mutate_at(c(3:10), ~replace(., is.na(.), 9)) # replaces NA with "No Data" code
+}else{
+  print("No rows to import")
+}
 
 WildlifeObservation.keys <-uploadData(db$WildlifeObservation , "data.WildlifeObservation", conn,
-                                      keep.guid = FALSE)
+                                      keep.guid = TRUE)
 
 
 ## Riparian veg Activity table - Creates record whether veg was observed or not
@@ -680,7 +765,7 @@ db$riparianVegActivity <- visit %>%
          Notes = RiparianVegetationNotes)
 
 riparianVegActivity.keys <-uploadData(db$riparianVegActivity, "data.RiparianVegetationActivity", conn, 
-                                      keep.guid = FALSE)
+                                      keep.guid = TRUE)
 
 
 ## riparian veg observation table
@@ -723,8 +808,7 @@ db$riparianVegObservation <- tempVeg2  %>%
   mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1) 
 
 riparianVegObservation.keys <-uploadData(db$riparianVegObservation , "data.RiparianVegetationObservation", conn, 
-                                         keep.guid = FALSE)
-
+                                         keep.guid = TRUE)
 
 
 ## Invasives Activity table - Creates record whether invasives were observed or not
@@ -737,33 +821,53 @@ db$InvasiveActivity <- visit %>%
   mutate(DataProcessingLevelID = 1)  # Raw DPL
 
 InvasiveActivity.keys <-uploadData(db$InvasiveActivity, "data.InvasivesActivity", conn, 
-                                   keep.guid = FALSE)
+                                   keep.guid = TRUE)
 
-## Invasives Observations table
+## Invasives Observations table - related table so have to compare edited dates directly
+# build the InvasivePlants table of records that are new or have been updated (convert dates to chars for compare only)
+baseIP <- invasives %>% 
+  left_join(InvasiveObsIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
+
+## need to make a full invasive plants activity keys list of all guids and IDs not just the new ones so need to merge invasiveActivity keys with InvasiveActivityIDs
+fullInvasiveActivity.keys <- InvasiveActivity.keys %>% 
+  select(ID, GlobalID) %>% 
+  union(rename(subset(InvasiveActivityIDs, select = c(SQL.ID, SQL.GlobalID)),
+               ID = SQL.ID, GlobalID = SQL.GlobalID ))
+
 ## missing a species notes field in AGOL?
-db$InvasiveObservation <- invasives %>% 
-  inner_join(InvasiveActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
-  inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
-  select(InvasivesActivityID = ID,
-         GlobalID = globalid,
-         UTMZoneID = UTMZone,
-         HorizontalDatumID  = Datum,
-         GPSUnitID = GPS,
-         GpsX = x,
-         GpsY = y,
-         TaxonID = InvasiveSpecies,
-         RiparianVegetationBufferID = RiparianVegBuffer) %>% 
-  mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1,
-          GpsX = round(GpsX,8),
-          GpsY = round(GpsY,8))
-# only use code below for THIS YEAR. This replaces the empty species field in AGOl
-# with a taxon ID of 55 (Unknown). And the empty riparian buffer zone field with a 9 (no data)
-db$InvasiveObservation  <- db$InvasiveObservation %>% 
-  mutate_at(c(8), ~replace(., is.na(.), 55)) %>% 
-  mutate_at(c(9), ~replace(., is.na(.), 9))
+if (nrow(baseIP)>0){
+  print(paste0(nrow(baseIP)," rows to import or update from InvasivePlants table"))
+  db$InvasiveObservation <- invasives %>% 
+    inner_join(fullInvasiveActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
+    inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
+    select(InvasivesActivityID = ID,
+           GlobalID = globalid,
+           UTMZoneID = UTMZone,
+           HorizontalDatumID  = Datum,
+           GPSUnitID = GPS,
+           GpsX = x,
+           GpsY = y,
+           TaxonID = InvasiveSpecies,
+           RiparianVegetationBufferID = RiparianVegBuffer,
+           Survey123_LastEditedDate = Survey123_LastEditedDate.x) %>% 
+    mutate( ProtectedStatusID = 4, TaxonomicReferenceAuthorityID = 1,
+            GpsX = round(GpsX,8),
+            GpsY = round(GpsY,8))
   
+  # only use code below for THIS YEAR. This replaces the empty species field in AGOl
+  # with a taxon ID of 55 (Unknown). And the empty riparian buffer zone field with a 9 (no data)
+  db$InvasiveObservation  <- db$InvasiveObservation %>% 
+    mutate_at(c(8), ~replace(., is.na(.), 55)) %>% 
+    mutate_at(c(9), ~replace(., is.na(.), 9))
+  
+}else{
+  print("No rows to import")
+}
+
+
 InvasiveObservation.keys <-uploadData(db$InvasiveObservation, "data.InvasivesObservation", conn,
-                                      keep.guid = FALSE)
+                                      keep.guid = TRUE)
 
 
 ## Repeat Activity table
@@ -776,31 +880,49 @@ db$RepeatActivity <-visit %>%
   mutate(DataProcessingLevelID = 1)
 
 RepeatActivity.keys <-uploadData(db$RepeatActivity, "data.RepeatPhotoActivity", conn, 
-                                 keep.guid = FALSE)
+                                 keep.guid = TRUE)
 
+## Repeat Observations table - related table so have to compare edited dates directly
+# build the InvasivePlants table of records that are new or have been updated (convert dates to chars for compare only)
+baseRO <- repeats %>% 
+  left_join(RepeatObsIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
+
+## need to make a full repeat photo activity keys list of all guids and IDs not just the new ones so need to merge invasiveActivity keys with InvasiveActivityIDs
+fullRepeatActivity.keys <- RepeatActivity.keys %>% 
+  select(ID, GlobalID) %>% 
+  union(rename(subset(RepeatObsIDs, select = c(SQL.ID, SQL.GlobalID)),
+               ID = SQL.ID, GlobalID = SQL.GlobalID ))
 
 ## Repeat Observations table
-db$RepeatObservation <- repeats %>% 
-  inner_join(RepeatActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
-  inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
-  select(RepeatPhotoActivityID = ID,
-         GlobalID = globalid,
-         RepeatPhotoTypeID = PhotoType,
-         UTMZone,
-         HorizontalDatumID  = Datum,
-         GPSUnitID = GPS,
-         GpsX = x,
-         GpsY = y )%>% 
-  mutate(GpsX = round(GpsX,8),
-          GpsY = round(GpsY,8))
-
-# only use code below for THIS YEAR. This replaces the empty repeat photo type in AGOl
-# with a repeat photo type id ID of 3 (Other).
-db$RepeatObservation  <- db$RepeatObservation %>% 
-  mutate_at(c(3), ~replace(., is.na(.), 3)) 
+if (nrow(baseRO)>0){
+  print(paste0(nrow(baseRO)," rows to import or update from repeat point layer"))
+  db$RepeatObservation <- repeats %>% 
+    inner_join(RepeatActivity.keys, by = c("parentglobalid" = "GlobalID"))%>% 
+    inner_join(visit, by = c("parentglobalid" = "globalid")) %>% 
+    select(RepeatPhotoActivityID = ID,
+           GlobalID = globalid,
+           RepeatPhotoTypeID = PhotoType,
+           UTMZone,
+           HorizontalDatumID  = Datum,
+           GPSUnitID = GPS,
+           GpsX = x,
+           GpsY = y,
+           Survey123_LastEditedDate = Survey123_LastEditedDate.x)%>% 
+    mutate(GpsX = round(GpsX,8),
+           GpsY = round(GpsY,8))
+  
+  # only use code below for THIS YEAR. This replaces the empty repeat photo type in AGOl
+  # with a repeat photo type id ID of 3 (Other).
+  db$RepeatObservation  <- db$RepeatObservation %>% 
+    mutate_at(c(3), ~replace(., is.na(.), 3)) 
+  
+}else{
+  print("No rows to import")
+}
 
 RepeatObservation.keys <-uploadData(db$RepeatObservation, "data.RepeatPhotoObservation", conn,
-                                    keep.guid = FALSE)
+                                    keep.guid = TRUE)
 
 #################################################################################################
 ## This section gets all photo data into the Photo Activity Table and Photo table
@@ -817,7 +939,7 @@ db$PhotoActivity <- visit %>%
   mutate(DataProcessingLevelID = 1)  # Raw
 
 PhotoActivity.keys <-uploadData(db$PhotoActivity, "data.PhotoActivity", conn, 
-                                keep.guid = FALSE)
+                                keep.guid = TRUE)
 names(PhotoActivity.keys) <- c("PhotoActivityID", "VisitGlobalID")
 
 ## Photo table upload in 2 stages, internal images and external images
