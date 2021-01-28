@@ -34,7 +34,9 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
                          "OUTPUT ", paste0("INSERTED.", colnames.key, collapse = ", "), ", INSERTED.", col.guid, ", $action INTO InsertOutput ;")
     
 
-  } else if (has.guid & !keep.guid) {  # Create temporary GUID column in order to return a GUID-ID crosswalk
+  } else if (has.guid & !keep.guid) {  
+    # Create temporary GUID column in order to return a GUID-ID crosswalk- 
+    # this option is for photos. we are assuming these won't have edits so don't need the merge statement
     cols <- names(df)
     cols[grep(col.guid, cols)] <- "GUID_DeleteMe"  # Replace GUID column name to make clear that it is temporary
     cols <- paste(cols, collapse = ", ")
@@ -63,7 +65,6 @@ uploadData <- function(df, table.name, conn, has.guid = TRUE, keep.guid = FALSE,
   }
   
   print(sql.insert)# testing
-  print(scols) # testing
   
   sql.inserted <- "SELECT * FROM InsertOutput"
   
