@@ -120,6 +120,12 @@ RepeatObsIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "RepeatPhotoObservati
   dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
   dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
 
+## get SensorRetrieval Attempt table ID, GlobalID's and last edited date. Compare with s123 sensor retreival table
+sensorRetreivalIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "SensorRetrievalAttempt")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
 
 ## Get lookups of all photo codes for photo naming. 
 # These are used for naming the internal photos and getting the photo description code
@@ -297,7 +303,7 @@ db <- list()
 #   select(-StartDateTime)
 
 # Insert into Visit table in database
-# visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
+# visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = TRUE)
 
 
 ## Visit table -USE THIS YEAR ONLY. Pastes sensor retrival notes into visit notes where the sensor ID is null
@@ -339,15 +345,14 @@ if (nrow(baseV)>0){
 # Insert into Visit table in database
 visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = TRUE)
 
+
 ## need to make a full visit keys list of all guids and IDs not just the new ones so need to merge visit keys with visit IDs
 fullVisit.keys <- visit.keys %>% 
   select(ID, GlobalID) %>% 
   union(rename(subset(visitIDs, select = c(SQL.ID, SQL.GlobalID)),
                ID = SQL.ID, GlobalID = SQL.GlobalID ))
 
-
-
-# build the visit personel table of records that are new or have been updated (convert dates to chars for compare only)
+## build the visit personel table of records that are new or have been updated (convert dates to chars for compare only)
 baseVP <- observers %>% 
   left_join(visitPersonelIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
   filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(VisitID))
@@ -388,39 +393,18 @@ sensorDep.keys <- uploadData(db$SensorDeploy, "data.SensorDeployment", conn, kee
 ## get sensor to deployment ID crosswalk table to import sensor retrieval data
 SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
   dplyr::collect() 
-##############################################
-# ## sensor retrieval table - USE NEXT YEAR
-# if (any(is.na(sensorRetrieval$SensorIDRet))){
-#   print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
-#   print( "These need fixing before the import will run")
-# }else{
-#   db$SensorRetrieval <- sensorRetrieval %>%
-#     inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
-#     inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
-#     left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>% 
-#     select(VisitID = ID,
-#            GlobalID = globalid,
-#            SensorDeploymentID = DeploymentID,
-#            IsSensorretrievedID = SensorRetrieved,
-#            SensorProblemID = SensorProblem,
-#            RetrievalTime,
-#            DownloadSuccessful,
-#            notes = SensorRetrieveNotes) %>%
-#     mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
-#                                                DownloadSuccessful =="N" ~ 2,
-#                                                DownloadSuccessful == "NA" ~ 8,
-#                                                is.na(DownloadSuccessful) ~ 9,
-#                                                DownloadSuccessful == "ND" ~ 9),
-#            RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
-#     select(-RetrievalTime, -DownloadSuccessful)
-#   
-#   sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
-# }
 
 ## sensor retrieval table - USE THIS YEAR ONLY - needs a final test!!
 ## the other sensors notes (without sensorID's) were put in the visit table this year
-db$SensorRetrieval <- sensorRetrieval %>%
-  inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+
+## sensorRetrieval table - related table so have to compare edited dates directly
+# build the SensorRetreival table of records that are new or have been updated (convert dates to chars for compare only)
+baseSR <- sensorRetrieval %>% 
+  left_join(sensorRetreivalIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
+
+db$SensorRetrieval <- baseSR %>%
+  inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
   inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
   left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
   filter(!is.na(SensorIDRet) &
@@ -432,7 +416,8 @@ db$SensorRetrieval <- sensorRetrieval %>%
          SensorProblemID = SensorProblem,
          RetrievalTime,
          DownloadSuccessful,
-         notes = SensorRetrieveNotes) %>%
+         notes = SensorRetrieveNotes,
+         Survey123_LastEditedDate = Survey123_LastEditedDate.x) %>%
   mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
                                              DownloadSuccessful =="N" ~ 2,
                                              DownloadSuccessful == "NA" ~ 8,
@@ -441,8 +426,36 @@ db$SensorRetrieval <- sensorRetrieval %>%
          RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
   select(-RetrievalTime, -DownloadSuccessful)
 
-sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
-################################### come back to sensor retrieval table! ############
+sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = TRUE)
+##############################################
+# ## sensor retrieval table - USE NEXT YEAR
+# if (any(is.na(sensorRetrieval$SensorIDRet))){
+#   print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
+#   print( "These need fixing before the import will run")
+# }else{
+#   db$SensorRetrieval <- baseSR %>%
+#     inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+#     inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
+#     left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>% 
+#     select(VisitID = ID,
+#            GlobalID = globalid,
+#            SensorDeploymentID = DeploymentID,
+#            IsSensorretrievedID = SensorRetrieved,
+#            SensorProblemID = SensorProblem,
+#            RetrievalTime,
+#            DownloadSuccessful,
+#            notes = SensorRetrieveNotes,
+#             Survey123_LastEditedDate = Survey123_LastEditedDate.x) %>%
+#     mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
+#                                                DownloadSuccessful =="N" ~ 2,
+#                                                DownloadSuccessful == "NA" ~ 8,
+#                                                is.na(DownloadSuccessful) ~ 9,
+#                                                DownloadSuccessful == "ND" ~ 9),
+#            RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
+#     select(-RetrievalTime, -DownloadSuccessful)
+#   
+#   sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = TRUE)
+# }
 
 ## flow discharge activity table
 db$DischargeFlow <- visit %>% 
@@ -472,6 +485,10 @@ dischargeEst.keys <-uploadData(db$DischargeEst , "data.DischargeEstimatedObserva
 
 
 ## Discharge volumetric table
+
+## need a way to also capture if a change was made to filltime. 
+#We already know which new/ changed records are comining in from joining to discharge flow keys( based on visit keys which are new or changed from visit), so we really only need to add any changed ones.
+#Maybe if we add the filltime GLobal ID to this table, on import, then we can find thos echanges and just append them to this table. need to sort out the 2 global ID issues though
 db$DischargeVol <- visit %>% 
   inner_join(dischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(DischargeMethod !="EST") %>% 
@@ -652,8 +669,6 @@ db$WQ_tempC<- rbind(tempC1, tempC2, tempC3) %>%
 
 WQ_tempC.keys <-uploadData(db$WQ_tempC, "data.WaterQualityTemperature", conn,
                            keep.guid = TRUE)
-########################################################################################
-
 
 ## Disturbance Activity table
 db$DisturbanceActivity <- visit %>% 
@@ -940,7 +955,7 @@ db$PhotoActivity <- visit %>%
 
 PhotoActivity.keys <-uploadData(db$PhotoActivity, "data.PhotoActivity", conn, 
                                 keep.guid = TRUE)
-names(PhotoActivity.keys) <- c("PhotoActivityID", "VisitGlobalID")
+names(PhotoActivity.keys) <- c("PhotoActivityID", "VisitGlobalID", "Action")
 
 ## Photo table upload in 2 stages, internal images and external images
 
