@@ -108,6 +108,8 @@ sensorRetrieval <- sensorRetrieval$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>%
   filter(parentglobalid %in% visit$globalid)
 
 
@@ -159,6 +161,8 @@ fillTime <- fillTime$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
   filter(parentglobalid %in% visit$globalid)
 
 
@@ -211,6 +215,8 @@ riparianVeg  <- riparianVeg$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
   filter(parentglobalid %in% visit$globalid)
 
 ## get AGOL DS riparian veg internal camera table: InternalCamera

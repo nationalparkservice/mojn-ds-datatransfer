@@ -84,6 +84,19 @@ DistFlowModIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "DisturbanceFlowMod
   dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
   dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
 
+
+## get Discharge Flow table ID, Activity ID ( parent table) Global ID's, and last edited date. Compare with s123 FlowModTypes table
+DischargeFlowIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "DischargeActivity")) %>%
+  dplyr::collect() %>%
+  dplyr::select(ID, GlobalID) %>%
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID)
+
+## get Discharge Volume Obs table ID, Activity ID ( parent table) Global ID's, and last edited date. Compare with s123 FlowModTypes table
+DischargeVolIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "DischargeVolumetricObservation")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, DischargeActivityID, GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID,  SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
+
 ## get Wildlife Activity table ID, Global ID's for making a full list to filter child table on
 WildActivityIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "WildlifeActivity")) %>% 
   dplyr::collect() %>% 
@@ -126,6 +139,17 @@ sensorRetreivalIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "SensorRetrieva
   dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
   dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
 
+## get Riparian veg Activity table ID, Global ID's for making a full list to filter child table on
+ripVegActivityIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "RiparianVegetationActivity")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID)
+
+## get Riparian Veg Observation table ID, Global ID's, and last edited date. Compare with s123 VegImageRepeat table
+ripVegObsIDs <- dplyr::tbl(conn, dbplyr::in_schema("data", "RiparianVegetationObservation")) %>% 
+  dplyr::collect() %>% 
+  dplyr::select(ID, GlobalID,Survey123_LastEditedDate) %>% 
+  dplyr::rename(SQL.ID = ID, SQL.GlobalID = GlobalID, SQL.Survey123_LastEditedDate = Survey123_LastEditedDate)
 
 ## Get lookups of all photo codes for photo naming. 
 # These are used for naming the internal photos and getting the photo description code
@@ -484,20 +508,30 @@ dischargeEst.keys <-uploadData(db$DischargeEst , "data.DischargeEstimatedObserva
                                keep.guid = TRUE)
 
 
-## Discharge volumetric table
+## Discharge volumetric table. Has to capture if a change was made to filltime whis is used in this table. 
+## Discharge vol table- partly related table ( filltime) so have to compare edited dates directly
+# build the FillTime table of records that are new or have been updated (convert dates to chars for compare only)
+baseFT <- fillTime %>% 
+  left_join(DischargeVolIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
 
-## need a way to also capture if a change was made to filltime. 
-#We already know which new/ changed records are comining in from joining to discharge flow keys( based on visit keys which are new or changed from visit), so we really only need to add any changed ones.
-#Maybe if we add the filltime GLobal ID to this table, on import, then we can find thos echanges and just append them to this table. need to sort out the 2 global ID issues though
+## need to make a full discharge flow  keys list of all guids and IDs not just the new ones to capture all activitiy ID's where the volume(filltime) may have been updated
+# so need to merge dischargeFlow keys with dischargeFlow IDs ( discharge activity)
+fullDischargeFlow.keys <- dischargeFlow.keys %>% 
+  select(ID, GlobalID) %>% 
+  union(rename(subset(DischargeFlowIDs, select = c(SQL.ID, SQL.GlobalID)),
+               ID = SQL.ID, GlobalID = SQL.GlobalID ))
+
 db$DischargeVol <- visit %>% 
-  inner_join(dischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
+  inner_join(fullDischargeFlow.keys, by = c("globalid" = "GlobalID")) %>% 
   filter(DischargeMethod !="EST") %>% 
-  left_join(fillTime, by = c("globalid" = "parentglobalid")) %>% 
+  left_join(baseFT, by = c("globalid" = "parentglobalid")) %>% 
   select(DischargeActivityID = ID,
-         GlobalID = globalid,
+         GlobalID = globalid.y,
          ContainerVolume_mL,
          FillTime_seconds = FillTime_sec,
-         EstimatedCapture_percent = EstimatedCapture_Percent)
+         EstimatedCapture_percent = EstimatedCapture_Percent,
+         Survey123_LastEditedDate = Survey123_LastEditedDate.y)
 
 dischargeVOL.keys <-uploadData(db$DischargeVol , "data.DischargeVolumetricObservation", conn,
                                keep.guid = TRUE)
@@ -781,11 +815,20 @@ db$riparianVegActivity <- visit %>%
 
 riparianVegActivity.keys <-uploadData(db$riparianVegActivity, "data.RiparianVegetationActivity", conn, 
                                       keep.guid = TRUE)
+####################################################################
+## need a way to also capture if a change was made to riparianVeg. 
+
+## need to make a full riparian veg activitykeys list of all guids and IDs not just the new ones so need to merge riparianVegActivity keys with ripVegActivityIDs 
+fullRiparianVegActivity.keys <- riparianVegActivity.keys %>% 
+  select(ID, GlobalID) %>% 
+  union(rename(subset(ripVegActivityIDs, select = c(SQL.ID, SQL.GlobalID)),
+               ID = SQL.ID, GlobalID = SQL.GlobalID ))
 
 
-## riparian veg observation table
+
+## riparian veg observation table step1
 tempveg1<- visit %>% 
-  inner_join(riparianVegActivity.keys, by = c("globalid" = "GlobalID")) %>% 
+  inner_join(fullRiparianVegActivity.keys, by = c("globalid" = "GlobalID")) %>% 
   select(RiparianVegetationActivityID = ID,
          GlobalID = globalid,
          LifeFormList,
@@ -806,14 +849,22 @@ tempveg1<- visit %>%
          "Woody >4m" = WoodyGT4m, 
          "Non-Plant" = NonPlant)
 
+## riparianVeg observation table- partly related table ( riparianVeg) so have to compare edited dates directly
+# build the riparianveg table of records that are new or have been updated (convert dates to chars for compare only)
+baseRV <- riparianVeg %>%
+  left_join(ripVegObsIDs, by = c("globalid" = "SQL.GlobalID" )) %>%
+  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
+
+
 tempVeg2 <- gather(tempveg1, "LifeFormName", "Rank", 5:15) %>% 
   filter(Rank !=12) %>% 
-  left_join(riparianVeg, by = c("GlobalID" = "parentglobalid", "LifeFormName" = "LifeFormName" )) %>% 
+  left_join(baseRV, by = c("GlobalID" = "parentglobalid", "LifeFormName" = "LifeFormName" )) %>% 
   select(RiparianVegetationActivityID,
-         GlobalID,
+         GlobalID = globalid,
          LifeFormName,
          Rank,
-         DominantSpecies) %>% 
+         DominantSpecies,
+         Survey123_LastEditedDate) %>% 
   inner_join(lifeform.types, by = c("LifeFormName" = "Label")) # gets life form ID from lookup.lifeform
 
 db$riparianVegObservation <- tempVeg2  %>% 
