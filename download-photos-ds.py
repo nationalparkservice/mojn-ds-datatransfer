@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Sep 23 10:26:58 2020
-
-@author: LizzyEdson
-"""
-
 import arcpy
 from arcpy import da
 from datetime import datetime

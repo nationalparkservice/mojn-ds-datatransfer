@@ -7,7 +7,7 @@
 ## Libraries and versions used: libraries specified in Main.R. Additional libraries for this R script: rstudioapi 0.11 
 ################################################################
 
-date_qry <- "DateTime < DATE '2020-10-01'"
+date_qry <- "DateTime > DATE '2020-10-01'"
 
 ## Get a token with a headless account - Warning! You need to know the password!
 token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",
@@ -36,6 +36,14 @@ visit <- visit$features$attributes %>%
   mutate_if(is.numeric, na_if, -9999) %>%
   mutate(DateTime = as.POSIXct(DateTime/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
   rename(StartDateTime = DateTime)
+
+#Inserted MEL 9/17/2021
+#Conversion of NA to NoFlag to accomodate SQL required fields
+visit$pH_Flag[is.na(visit$pH_Flag)]<- 1
+visit$DO_Flag[is.na(visit$DO_Flag)]<- 1
+visit$SpCond_microS_Flag[is.na(visit$SpCond_microS_Flag)]<- 1
+visit$Temp_C_Flag[is.na(visit$Temp_C_Flag)]<- 1
+
 
 # visit_parentglobalid_qry <- paste0("parentglobalid IN (", paste0("'", visit$globalid[1:40], "'", collapse = ", "), ")")
 
@@ -102,7 +110,10 @@ sensorRetrieval <- sensorRetrieval$features$attributes %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
   filter(parentglobalid %in% visit$globalid)
-
+##Inserted by MEL 9/22/2021 in desperation to remove records where there was correctly no sensor to be retrieved
+sensorRetrieval <-sensorRetrieval %>% drop_na(SensorTypeRet)
+##Even more desperate- use with caution
+sensorRetrieval <-sensorRetrieval %>% drop_na(SensorIDRet)
 
 ## get AGOL DS repeat photos-internal table: RepeatPhotos_Internal
 ## create repeatsInt dataframe

@@ -26,9 +26,10 @@ library(sp)    # for spatial point conversions
 source("utils-ds.R")
 
 source("agol-download-ds.R")
-source("data-upload-ds.R")
+#source("data-upload-ds.R")
 
 #check the python path
-repl_python()
+#repl_python()
 #check ArcPy works!
-import("arcpy")
+#import("arcpy")
+#import arcpy

@@ -8,43 +8,46 @@
 ##      - make sure you can import arcpy before running!
 ##################################################################################################
 
-#---------Variables used---------------------# uncomment either the testing set or the real set 
+##---------Indicate whether you want to use defaults for MASTER database import or LOCAL database import
+UpdateType <- "Master"  
 
-# set this to the location of the downloaded FGDB from AGOL
-# filepaths for testing import:
-gdb.path <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\MOJN_DS_SpringVisit-TEST.gdb"
-photo.dest <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\Photos_DS"
-originals.dest <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\Photo_Originals"
-db.params.path <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\\\ds-database-conn.csv"
-ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/"
-ExternalSorted <- photo.dest
-# date range of survey year (used for external image file path wrangling)
-surveyYearStart <- "2020_08_01"
-surveyYearEnd <- "2020_10_01"
-# variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
-UTMcode11 <-"+init=epsg:26911"
-UTMcode12 <-"+init=epsg:26912"
-DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but check from AGOL
+#--------Set parameters for a MASTER or a LOCAL update -------------------------------------
+if (UpdateType == "Master"){
+  # # Settings for MASTER database import:
+  # set this to the location of the downloaded FGDB from AGOL
+   gdb.path <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Input\\MOJN_DS_SpringVisit.gdb"
+   photo.dest <- "M:/MONITORING/DS_Water/Data/Images"
+   originals.dest <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/AGOL_DS"
+   db.params.path <- "M:/MONITORING/DS_Water/Data/Database/ConnectFromR/ds-database-conn.csv"
+   ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify"
+   ExternalSorted <- photo.dest
+  # # date range of survey year (used for external image file path wrangling)
+   surveyYearStart <- "2020_10_01"
+   surveyYearEnd <- "2021_07_01"
+  # # variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
+   UTMcode11 <-"+init=epsg:26911"
+   UTMcode12 <-"+init=epsg:26912"
+   DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change
 
-
-
-# # filepaths for the real import:
-# gdb.path <- "C:/Users/sewright/Desktop/DSPhotoDownloadTest/MOJN_DS_SpringVisit_20201002.gdb"
-# photo.dest <- "M:/MONITORING/DS_Water/Data/Images"
-# originals.dest <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/AGOL_DS"
-# db.params.path <- "M:/MONITORING/DS_Water/Data/Database/ConnectFromR/ds-database-conn.csv"
-# ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify"
-# ExternalSorted <- photo.dest
-# # date range of survey year (used for external image file path wrangling)
-# surveyYearStart <- "2020_08_01"
-# surveyYearEnd <- "2020_10_01"
-# # variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
-# UTMcode11 <-"+init=epsg:26911"
-# UTMcode12 <-"+init=epsg:26912"
-# DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change
-
-
-#--------------------------------------------------------------------------------#
+} else {
+  
+  # # Settings for LOCAL database import:
+  # set this to the location of the downloaded FGDB from AGOL
+  gdb.path <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Input\\MOJN_DS_SpringVisit.gdb" 
+  photo.dest <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Output\\Photos"
+  originals.dest <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Output\\Photos_AGOL"
+  db.params.path <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Input\\ds-database-conn.csv"
+  ExternalOrig <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\"
+  ExternalSorted <- photo.dest
+  # date range of survey year (used for external image file path wrangling)
+  surveyYearStart <- "2020_09_01"
+  surveyYearEnd <- "2021_07_01"
+  # variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
+  UTMcode11 <-"+init=epsg:26911"
+  UTMcode12 <-"+init=epsg:26912"
+  DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but check from AGOL  
+  
+}
 
 
 #------------ Lookup tables form SQL database used ------------------------------#
@@ -86,8 +89,8 @@ repeat.types <- dplyr::tbl(conn, dbplyr::in_schema("lookup", "RepeatPhotoType"))
   select(ID, Code)
 
 # ## get sensor to deployment ID crosswalk table to import sensor retrieval data
-# SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
-#   dplyr::collect() 
+ SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
+   dplyr::collect() 
 #-----------------------------------------------------------------------------------#
 
 
@@ -215,53 +218,53 @@ if(nrow(additionalPhotosInt) == 0){
 db <- list()
 
 # ## Visit table - works USE NEXT YEAR ( 2021!)
-# db$Visit <- visit %>%
-#   select(SiteID,
-#          StartDateTime,
-#          Notes = SpringComments,
-#          GlobalID = globalid,
-#          SpringTypeID = SpringType,
-#          VisitTypeID = VisitType,
-#          MonitoringStatusID = Status) %>%
-#   mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
-#          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
-#          DataProcessingLevelID = 1,  # Raw
-#          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
-#          ) %>%
-#   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
-#   select(-StartDateTime)
-# 
+ db$Visit <- visit %>%
+   select(SiteID,
+          StartDateTime,
+          Notes = SpringComments,
+          GlobalID = globalid,
+          SpringTypeID = SpringType,
+          VisitTypeID = VisitType,
+          MonitoringStatusID = Status) %>%
+   mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
+          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
+          DataProcessingLevelID = 1,  # Raw
+          ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
+          ) %>%
+   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
+   select(-StartDateTime)
+ 
 # # Insert into Visit table in database
-# visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
+ visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
 
 
 ## Visit table -USE THIS YEAR ONLY. Pastes sensor retrival notes into visit notes where the sensor ID is null
 ## (these are the different sensors the protocol were trying out)
-sensorRetrievalNulls <- sensorRetrieval %>% 
-  filter(is.na(SensorIDRet)) # gets those extra sensor retrieval records
+#sensorRetrievalNulls <- sensorRetrieval %>% 
+#  filter(is.na(SensorIDRet)) # gets those extra sensor retrieval records
 
-db$Visit <- visit %>%
-  left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
-  select(SiteID,
-         StartDateTime,
-         Notes = SpringComments,
-         SensorRetrieveNotes,
-         GlobalID = globalid,
-         SpringTypeID = SpringType,
-         VisitTypeID = VisitType,
-         MonitoringStatusID = Status) %>%
-  mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
-          VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
-         #StartTime = format.Date(StartDateTime, "%H:%M:%S"),
-         StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
-         DataProcessingLevelID = 1,  # Raw
-         ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
-         ) %>%
-  left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
-  select(-StartDateTime, -SensorRetrieveNotes)
+#db$Visit <- visit %>%
+#  left_join(sensorRetrievalNulls,by = c("globalid" = "parentglobalid")) %>% 
+#  select(SiteID,
+#         StartDateTime,
+#         Notes = SpringComments,
+#         SensorRetrieveNotes,
+#         GlobalID = globalid,
+#         SpringTypeID = SpringType,
+#         VisitTypeID = VisitType,
+#         MonitoringStatusID = Status) %>%
+#  mutate(Notes = ifelse(!is.na(SensorRetrieveNotes), paste(Notes,SensorRetrieveNotes), Notes),
+#          VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
+#         #StartTime = format.Date(StartDateTime, "%H:%M:%S"),
+#         StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
+#         DataProcessingLevelID = 1,  # Raw
+#         ProtocolID = 12 # first published version. SARAH TODO add this field to Survey123
+#         ) %>%
+#  left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
+#  select(-StartDateTime, -SensorRetrieveNotes)
 
 # Insert into Visit table in database
-visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
+#visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = FALSE)
 
 
 
@@ -292,63 +295,73 @@ db$SensorDeploy <- visit %>%
 
 sensorDep.keys <- uploadData(db$SensorDeploy, "data.SensorDeployment", conn, keep.guid = FALSE)
 
-## get sensor to deployment ID crosswalk table to import sensor retrieval data
-SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
-  dplyr::collect() 
-
-# ## sensor retrieval table - USE NEXT YEAR
-# if (any(is.na(sensorRetrieval$SensorIDRet))){
-#   print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
-#   print( "These need fixing before the import will run")
-# }else{
-#   db$SensorRetrieval <- sensorRetrieval %>%
-#     inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
-#     inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
-#     left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>% 
-#     select(VisitID = ID,
-#            GlobalID = globalid,
-#            SensorDeploymentID = DeploymentID,
-#            IsSensorretrievedID = SensorRetrieved,
-#            SensorProblemID = SensorProblem,
-#            RetrievalTime,
-#            DownloadSuccessful,
-#            notes = SensorRetrieveNotes) %>%
-#     mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
-#                                                DownloadSuccessful =="N" ~ 2,
-#                                                DownloadSuccessful == "NA" ~ 8,
-#                                                is.na(DownloadSuccessful) ~ 9,
-#                                                DownloadSuccessful == "ND" ~ 9),
-#            RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
-#     select(-RetrievalTime, -DownloadSuccessful)
-#   
-#   sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
-# }
+# ## get sensor to deployment ID crosswalk table to import sensor retrieval data
+ SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDeploymentIDCrosswalk")) %>%
+   dplyr::collect() 
+# 
+#  ## sensor retrieval table - USE NEXT YEAR
+  if (any(is.na(sensorRetrieval$SensorIDRet))){
+    print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
+    print( "These need fixing before the import will run")
+  }else{
+    db$SensorRetrieval <- sensorRetrieval %>%
+      inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+      inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
+      #left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>% 
+      left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
+         filter(!is.na(SensorIDRet) &
+                  as.Date(StartDateTime) > as.Date(DeploymentDate)) %>% 
+      
+      
+            select(VisitID = ID,
+             GlobalID = globalid,
+             SensorDeploymentID = DeploymentID,
+             IsSensorretrievedID = SensorRetrieved,
+             SensorProblemID = SensorProblem,
+             RetrievalTime,
+             DownloadSuccessful,
+             notes = SensorRetrieveNotes) %>%
+      mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
+                                                 DownloadSuccessful =="N" ~ 2,
+                                                 DownloadSuccessful == "NA" ~ 8,
+                                                 is.na(DownloadSuccessful) ~ 9,
+                                                 DownloadSuccessful == "ND" ~ 9),
+             RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
+      select(-RetrievalTime, -DownloadSuccessful)
+   #Emergency fix
+    db$SensorRetrieval <-db$SensorRetrieval %>% drop_na(SensorDeploymentID)
+    
+  sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
+  }
 
 ## sensor retrieval table - USE THIS YEAR ONLY - needs a final test!!
 ## the other sensors notes (without sensorID's) were put in the visit table this year
-db$SensorRetrieval <- sensorRetrieval %>%
-  inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
-  inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
-  left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
-  filter(!is.na(SensorIDRet) &
-           as.Date(StartDateTime) > as.Date(DeploymentDate)) %>% 
-  select(VisitID = ID,
-         GlobalID = globalid,
-         SensorDeploymentID = DeploymentID,
-         IsSensorRetrievedID = SensorRetrieved,
-         SensorProblemID = SensorProblem,
-         RetrievalTime,
-         DownloadSuccessful,
-         notes = SensorRetrieveNotes) %>%
-  mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
-                                             DownloadSuccessful =="N" ~ 2,
-                                             DownloadSuccessful == "NA" ~ 8,
-                                             is.na(DownloadSuccessful) ~ 9,
-                                             DownloadSuccessful == "ND" ~ 9),
-         RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
-  select(-RetrievalTime, -DownloadSuccessful)
+# db$SensorRetrieval <- sensorRetrieval %>%
+#   inner_join(visit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+#   inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
+#   left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
+#   filter(!is.na(SensorIDRet) &
+#            as.Date(StartDateTime) > as.Date(DeploymentDate)) %>% 
+#   select(VisitID = ID,
+#          GlobalID = globalid,
+#          SensorDeploymentID = DeploymentID,
+#          IsSensorRetrievedID = SensorRetrieved,
+#          SensorProblemID = SensorProblem,
+#          RetrievalTime,
+#          DownloadSuccessful,
+#          notes = SensorRetrieveNotes) %>%
+#   mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
+#                                              DownloadSuccessful =="N" ~ 2,
+#                                              DownloadSuccessful == "NA" ~ 8,
+#                                              is.na(DownloadSuccessful) ~ 9,
+#                                              DownloadSuccessful == "ND" ~ 9),
+#          RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
+#   select(-RetrievalTime, -DownloadSuccessful)
+# 
+# sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
+# 
 
-sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = FALSE)
+
 
 
 ## flow discharge activity table
@@ -401,7 +414,10 @@ db$SpringbrookDim <- visit %>%
          SpringbrookLengthFlagID = SPBKLength,
          SpringbrookLength_m = Length_m,
          SpringbrookWidth_m = Width_m,
-         Notes = ChannelDescription)
+         Notes = ChannelDescription,
+         SpringbrookType = SPBKType,
+         DiscontinuousSpringbrookLengthFlagId = DiscontinuousSPBKLength,
+         DiscontinuousSpringbrookLength_m = DiscontinuousLength_m)
 
 SpringbrookDim.keys <-uploadData(db$SpringbrookDim , "data.SpringbrookDimensions", conn,
                                  keep.guid = FALSE)
@@ -423,6 +439,7 @@ db$WQactivity <- visit %>%
          SpecificConductanceDataQualityFlagID = SpCond_microS_Flag,
          WaterTemperatureDataQualityFlagID = Temp_C_Flag) %>%
   mutate(DataProcessingLevelID = 1)  # Raw DPL
+
 
 WQactivity.keys <-uploadData(db$WQactivity, "data.WaterQualityActivity", conn,
                              keep.guid = FALSE)
@@ -453,6 +470,11 @@ DO3 <- visit %>%
          DissolvedOxygen_mg_per_L = DissolvedOxygen_mg_per_L_3,
          DissolvedOxygen_percent = DissolvedOxygen_percent_3)
 
+#These checks really need to look for both DO values and substitute 999 if only one is NA (mel)
+DO1 <- DO1 %>% drop_na(DissolvedOxygen_mg_per_L)
+DO2 <- DO2 %>% drop_na(DissolvedOxygen_mg_per_L)
+DO3 <- DO3 %>% drop_na(DissolvedOxygen_mg_per_L)
+
 db$WQ_DO <- rbind(DO1, DO2, DO3) %>% 
   arrange(WaterQualityActivityID)
 
@@ -480,6 +502,10 @@ pH3 <- visit %>%
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          pH = pH_3)
+
+pH1 <- pH1 %>% drop_na(pH)
+pH2 <- pH2 %>% drop_na(pH)
+pH3 <- pH3 %>% drop_na(pH)
 
 db$WQ_pH <- rbind(pH1, pH2, pH3) %>% 
   arrange(WaterQualityActivityID)
@@ -510,6 +536,10 @@ spCond3 <- visit %>%
          GlobalID = globalid,
          SpecificConductance_microS_per_cm = SpecificConductance_microS_3)
 
+spCond1 <- spCond1 %>% drop_na(SpecificConductance_microS_per_cm)
+spCond2 <- spCond2 %>% drop_na(SpecificConductance_microS_per_cm)
+spCond3 <- spCond3 %>% drop_na(SpecificConductance_microS_per_cm)
+
 db$WQ_SpCond<- rbind(spCond1, spCond2, spCond3) %>% 
   arrange(WaterQualityActivityID)
 
@@ -539,6 +569,10 @@ tempC3 <- visit %>%
   select(WaterQualityActivityID = ID,
          GlobalID = globalid,
          WaterTemperature_C = Temperature_C_3)
+
+tempC1 <- tempC1 %>% drop_na(WaterTemperature_C)
+tempC2 <- tempC2 %>% drop_na(WaterTemperature_C)
+tempC3 <- tempC3 %>% drop_na(WaterTemperature_C)
 
 
 db$WQ_tempC<- rbind(tempC1, tempC2, tempC3) %>% 
@@ -704,13 +738,13 @@ db$InvasiveObservation <- invasives %>%
           GpsY = round(GpsY,8))
 # only use code below for THIS YEAR. This replaces the empty species field in AGOl
 # with a taxon ID of 55 (Unknown). And the empty riparian buffer zone field with a 9 (no data)
-db$InvasiveObservation  <- db$InvasiveObservation %>% 
-  mutate_at(c(8), ~replace(., is.na(.), 55)) %>% 
-  mutate_at(c(9), ~replace(., is.na(.), 9))
-  
-InvasiveObservation.keys <-uploadData(db$InvasiveObservation, "data.InvasivesObservation", conn,
-                                      keep.guid = FALSE)
-
+# db$InvasiveObservation  <- db$InvasiveObservation %>% 
+#   mutate_at(c(8), ~replace(., is.na(.), 55)) %>% 
+#   mutate_at(c(9), ~replace(., is.na(.), 9))
+#   
+# InvasiveObservation.keys <-uploadData(db$InvasiveObservation, "data.InvasivesObservation", conn,
+#                                       keep.guid = FALSE)
+# 
 
 ## Repeat Activity table
 db$RepeatActivity <-visit %>% 
@@ -742,11 +776,11 @@ db$RepeatObservation <- repeats %>%
 
 # only use code below for THIS YEAR. This replaces the empty repeat photo type in AGOl
 # with a repeat photo type id ID of 3 (Other).
-db$RepeatObservation  <- db$RepeatObservation %>% 
-  mutate_at(c(3), ~replace(., is.na(.), 3)) 
-
-RepeatObservation.keys <-uploadData(db$RepeatObservation, "data.RepeatPhotoObservation", conn,
-                                    keep.guid = FALSE)
+#db$RepeatObservation  <- db$RepeatObservation %>% 
+#  mutate_at(c(3), ~replace(., is.na(.), 3)) 
+#
+#RepeatObservation.keys <-uploadData(db$RepeatObservation, "data.RepeatPhotoObservation", conn,
+#                                    keep.guid = FALSE)
 
 #################################################################################################
 ## This section gets all photo data into the Photo Activity Table and Photo table
