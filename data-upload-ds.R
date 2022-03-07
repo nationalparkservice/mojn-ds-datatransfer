@@ -9,7 +9,7 @@
 ##################################################################################################
 
 ##---------Indicate whether you want to use defaults for MASTER database import or LOCAL database import
-UpdateType <- "Master"  
+UpdateType <- "Local"  
 
 #--------Set parameters for a MASTER or a LOCAL update -------------------------------------
 if (UpdateType == "Master"){
@@ -22,8 +22,8 @@ if (UpdateType == "Master"){
    ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify"
    ExternalSorted <- photo.dest
   # # date range of survey year (used for external image file path wrangling)
-   surveyYearStart <- "2020_10_01"
-   surveyYearEnd <- "2021_07_01"
+   surveyYearStart <- "2021_10_01"
+   surveyYearEnd <- "2022_07_01"
   # # variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
    UTMcode11 <-"+init=epsg:26911"
    UTMcode12 <-"+init=epsg:26912"
@@ -40,8 +40,8 @@ if (UpdateType == "Master"){
   ExternalOrig <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\"
   ExternalSorted <- photo.dest
   # date range of survey year (used for external image file path wrangling)
-  surveyYearStart <- "2020_09_01"
-  surveyYearEnd <- "2021_07_01"
+  surveyYearStart <- "2021_09_01"
+  surveyYearEnd <- "2022_07_01"
   # variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
   UTMcode11 <-"+init=epsg:26911"
   UTMcode12 <-"+init=epsg:26912"
