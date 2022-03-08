@@ -34,8 +34,10 @@ visit <- visit$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
   mutate(DateTime = as.POSIXct(DateTime/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
-  rename(StartDateTime = DateTime)
+  rename(StartDateTime = DateTime, Survey123_LastEditedDate = EditDate) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 # visit_parentglobalid_qry <- paste0("parentglobalid IN (", paste0("'", visit$globalid[1:40], "'", collapse = ", "), ")")
 
@@ -54,7 +56,10 @@ repeats <- cbind(repeats$features$attributes, repeats$features$geometry) %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 ## get AGOL DS invasive plants point layer: InvasivePlants
 ## create invasives dataframe
@@ -70,7 +75,10 @@ invasives <- cbind(invasives$features$attributes, invasives$features$geometry) %
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 ## get AGOL DS observers table: Observers
 ## create observers dataframe
@@ -85,7 +93,10 @@ observers <- observers$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 
 ## get AGOL DS sensor retrieval table: SensorRetrieval
@@ -101,7 +112,10 @@ sensorRetrieval <- sensorRetrieval$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>%
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 
 ## get AGOL DS repeat photos-internal table: RepeatPhotos_Internal
@@ -152,7 +166,10 @@ fillTime <- fillTime$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 
 ## get AGOL DS Flow Mod Types table: FlowModTypes
@@ -168,7 +185,10 @@ disturbanceFlowMod <- disturbanceFlowMod$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 
 ## get AGOL DS Wildlife repeat table: WildlifeRepeat
@@ -184,7 +204,10 @@ wildlife <- wildlife$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 
 ## get AGOL DS riparian Vegetation image repeat table: VegImageRepeat
@@ -200,7 +223,10 @@ riparianVeg  <- riparianVeg$features$attributes %>%
   as_tibble() %>%
   mutate_if(is_character, na_if, "") %>%
   mutate_if(is.numeric, na_if, -9999) %>%
-  filter(parentglobalid %in% visit$globalid)
+  mutate(EditDate = as.POSIXct(EditDate/1000, origin = "1970-01-01", tz = "America/Los_Angeles")) %>%
+  rename(Survey123_LastEditedDate = EditDate) %>% 
+  filter(parentglobalid %in% visit$globalid) %>% 
+  mutate(Survey123_LastEditedDate = as.character(Survey123_LastEditedDate))
 
 ## get AGOL DS riparian veg internal camera table: InternalCamera
 ## create riparianVegInt dataframe
