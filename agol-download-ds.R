@@ -334,3 +334,4 @@ additionalPhotosExt <- additionalPhotosExt$features$attributes %>%
 ## this line if uncommented can remove all the tem,p "resp." list files and
 ## make it easier to see the tables in the global environment. can be useful for testing or modyfying the code
 # rm(list=ls(pattern="^resp."))
+

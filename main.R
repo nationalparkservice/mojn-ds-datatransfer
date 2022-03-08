@@ -10,7 +10,7 @@
 ##    for offline use) you will need to launch ArcPro to be able to use ArcPy
 ##  4. If you have more than one Python instance on your machine, for example ArcGIS and full python,
 ##     you need to force the reticyuate package to use the ArcGIS version BEFORE you load the library:
-Sys.setenv(RETICULATE_PYTHON = "C:\\Program Files\\ArcGIS\\Pro\\bin\\Python\\envs\\arcgispro-py3")
+Sys.setenv(RETICULATE_PYTHON = 'C:\\Program Files\\ArcGIS\\Pro\\bin\\Python\\envs\\arcgispro-py3')
 library(reticulate)
 
 library(jsonlite)
@@ -25,7 +25,7 @@ library(rgdal) # for spatial point conversions
 library(sp)    # for spatial point conversions
 source("utils-ds.R")
 
-source("agol-download-ds.R")
+#source("agol-download-ds.R")
 #source("data-upload-ds.R")
 
 #check the python path
