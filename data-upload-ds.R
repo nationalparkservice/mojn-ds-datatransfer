@@ -8,42 +8,48 @@
 ##      - make sure you can import arcpy before running!
 ##################################################################################################
 
-#---------Variables used---------------------# uncomment either the testing set or the real set 
+#---------Select Parameters To Use---------------------# 
 
-# set this to the location of the downloaded FGDB from AGOL
-# filepaths for testing import:
-gdb.path <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\MOJN_DS_SpringVisit-TEST.gdb"
-photo.dest <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\Photos_DS"
-originals.dest <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\Photo_Originals"
-db.params.path <- "C:\\Users\\EEdson\\Desktop\\Projects\\MOJN\\\\ds-database-conn.csv"
-ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/"
-ExternalSorted <- photo.dest
-# date range of survey year (used for external image file path wrangling)
-surveyYearStart <- "2020_08_01"
-surveyYearEnd <- "2020_10_01"
-# variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
-UTMcode11 <-"+init=epsg:26911"
-UTMcode12 <-"+init=epsg:26912"
-DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but check from AGOL
+##---------Indicate whether you want to use defaults for MASTER database import or LOCAL database import
+UpdateType <- "Local"  
 
-
-
-# # filepaths for the real import:
-# gdb.path <- "C:/Users/sewright/Desktop/DSPhotoDownloadTest/MOJN_DS_SpringVisit_20201002.gdb"
-# photo.dest <- "M:/MONITORING/DS_Water/Data/Images"
-# originals.dest <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify/AGOL_DS"
-# db.params.path <- "M:/MONITORING/DS_Water/Data/Database/ConnectFromR/ds-database-conn.csv"
-# ExternalOrig <- "M:/MONITORING/_FieldPhotoOriginals_DoNotModify"
-# ExternalSorted <- photo.dest
-# # date range of survey year (used for external image file path wrangling)
-# surveyYearStart <- "2020_08_01"
-# surveyYearEnd <- "2020_10_01"
-# # variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
-# UTMcode11 <-"+init=epsg:26911"
-# UTMcode12 <-"+init=epsg:26912"
-# DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change
-
-
+#--------Set parameters for a MASTER or a LOCAL update as specified by UpdateType----------------------------
+if (UpdateType == "Master"){
+  # # Settings for MASTER database import:
+  # set gdb.path to the location of the downloaded FGDB from AGOL
+  gdb.path <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Input\\MOJN_DS_SpringVisit_v20220307.gdb"
+  photo.dest <- "M:\\MONITORING\\DS_Water\\Data\\Images"
+  originals.dest <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\AGOL_DS"
+  db.params.path <- "M:\\MONITORING\\DS_Water\\Data\\Database\\ConnectFromR\\ds-database-conn.csv"
+  ExternalOrig <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\"
+  ExternalSorted <- photo.dest
+  # # date range of survey year (used for external image file path wrangling)
+  surveyYearStart <- "2021_10_01"
+  surveyYearEnd <- "2022_07_01"
+  # # variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
+  UTMcode11 <-"+init=epsg:26911"
+  UTMcode12 <-"+init=epsg:26912"
+  DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change
+  
+} else {
+  
+  # # Settings for LOCAL database import:
+  # set gdb.path to the location of the downloaded FGDB from AGOL
+  gdb.path <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Input\\MOJN_DS_SpringVisit_v20220307.gdb" 
+  photo.dest <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Output\\Photos"
+  originals.dest <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Output\\Photos_AGOL"
+  db.params.path <- "C:\\Users\\mlehman\\Documents\\R\\LocalConnectionStrings\\ds-database-conn_local.csv"
+  ExternalOrig <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\"
+  ExternalSorted <- photo.dest
+  # date range of survey year (used for external image file path wrangling)
+  surveyYearStart <- "2021_10_01"
+  surveyYearEnd <- "2022_07_01"
+  # variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
+  UTMcode11 <-"+init=epsg:26911"
+  UTMcode12 <-"+init=epsg:26912"
+  DecimalCode <-"+init=epsg:4326" # this is the wkid, it shouldn't change but check from AGOL  
+  
+}
 #--------------------------------------------------------------------------------#
 
 
