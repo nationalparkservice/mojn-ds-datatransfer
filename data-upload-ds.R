@@ -316,30 +316,30 @@ if(nrow(additionalPhotosInt) == 0){
 db <- list()
 
 # ## Visit table - works USE NEXT YEAR ( 2021!)
-# db$Visit <- visit %>%
-#   select(SiteID,
-#          StartDateTime,
-#          Notes = SpringComments,
-#          GlobalID = globalid,
-#          SpringTypeID = SpringType,
-#          VisitTypeID = VisitType,
-#          MonitoringStatusID = Status,
-#          ProtocolID,
-#          Survey123_LastEditedDate = EditDate) %>%
-#   mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
-#          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
-#          DataProcessingLevelID = 1 ) %>%
-#   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
-#   select(-StartDateTime)
+ db$Visit <- visit %>%
+   select(SiteID,
+          StartDateTime,
+          Notes = SpringComments,
+          GlobalID = globalid,
+          SpringTypeID = SpringType,
+          VisitTypeID = VisitType,
+          MonitoringStatusID = Status,
+          ProtocolID,
+          Survey123_LastEditedDate = EditDate) %>%
+   mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
+          StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
+          DataProcessingLevelID = 1 ) %>%
+   left_join(select(sites, ID, ProtectedStatusID), by = c("SiteID" = "ID")) %>%
+   select(-StartDateTime)
 
 # Insert into Visit table in database
-# visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = TRUE)
+ visit.keys <- uploadData(db$Visit, "data.Visit", conn, keep.guid = TRUE)
 
 
 ## Visit table -USE THIS YEAR ONLY. Pastes sensor retrival notes into visit notes where the sensor ID is null
 ## (these are the different sensors the protocol were trying out)
-sensorRetrievalNulls <- sensorRetrieval %>% 
-  filter(is.na(SensorIDRet)) # gets those extra sensor retrieval records
+# sensorRetrievalNulls <- sensorRetrieval %>% 
+#   filter(is.na(SensorIDRet)) # gets those extra sensor retrieval records
 
 # build the visit table of records that are new or have been updated ( convert dates to chars for compare only)
 baseV <- visit %>% 
@@ -429,63 +429,63 @@ SensorDeployment.Xref <- dplyr::tbl(conn, dbplyr::in_schema("ref", "SensorToDepl
 
 ## sensorRetrieval table - related table so have to compare edited dates directly
 # build the SensorRetreival table of records that are new or have been updated (convert dates to chars for compare only)
-baseSR <- sensorRetrieval %>% 
-  left_join(sensorRetreivalIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
-  filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
-
-db$SensorRetrieval <- baseSR %>%
-  inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
-  inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
-  left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
-  filter(!is.na(SensorIDRet) &
-           as.Date(StartDateTime) > as.Date(DeploymentDate)) %>% 
-  select(VisitID = ID,
-         GlobalID = globalid,
-         SensorDeploymentID = DeploymentID,
-         IsSensorRetrievedID = SensorRetrieved,
-         SensorProblemID = SensorProblem,
-         RetrievalTime,
-         DownloadSuccessful,
-         notes = SensorRetrieveNotes,
-         Survey123_LastEditedDate = Survey123_LastEditedDate.x) %>%
-  mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
-                                             DownloadSuccessful =="N" ~ 2,
-                                             DownloadSuccessful == "NA" ~ 8,
-                                             is.na(DownloadSuccessful) ~ 9,
-                                             DownloadSuccessful == "ND" ~ 9),
-         RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
-  select(-RetrievalTime, -DownloadSuccessful)
-
-sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = TRUE)
+# baseSR <- sensorRetrieval %>% 
+#   left_join(sensorRetreivalIDs, by = c("globalid" = "SQL.GlobalID" )) %>% 
+#   filter(as.character(Survey123_LastEditedDate) != as.character(SQL.Survey123_LastEditedDate) | is.na(SQL.ID))
+# 
+# db$SensorRetrieval <- baseSR %>%
+#   inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+#   inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
+#   left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID", "SiteID" = "DeploymentSiteID")) %>%
+#   filter(!is.na(SensorIDRet) &
+#            as.Date(StartDateTime) > as.Date(DeploymentDate)) %>% 
+#   select(VisitID = ID,
+#          GlobalID = globalid,
+#          SensorDeploymentID = DeploymentID,
+#          IsSensorRetrievedID = SensorRetrieved,
+#          SensorProblemID = SensorProblem,
+#          RetrievalTime,
+#          DownloadSuccessful,
+#          notes = SensorRetrieveNotes,
+#          Survey123_LastEditedDate = Survey123_LastEditedDate.x) %>%
+#   mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
+#                                              DownloadSuccessful =="N" ~ 2,
+#                                              DownloadSuccessful == "NA" ~ 8,
+#                                              is.na(DownloadSuccessful) ~ 9,
+#                                              DownloadSuccessful == "ND" ~ 9),
+#          RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
+#   select(-RetrievalTime, -DownloadSuccessful)
+# 
+# sensorRet.keys <- uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = TRUE)
 ##############################################
 # ## sensor retrieval table - USE NEXT YEAR
-# if (any(is.na(sensorRetrieval$SensorIDRet))){
-#   print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
-#   print( "These need fixing before the import will run")
-# }else{
-#   db$SensorRetrieval <- baseSR %>%
-#     inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
-#     inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
-#     left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>% 
-#     select(VisitID = ID,
-#            GlobalID = globalid,
-#            SensorDeploymentID = DeploymentID,
-#            IsSensorretrievedID = SensorRetrieved,
-#            SensorProblemID = SensorProblem,
-#            RetrievalTime,
-#            DownloadSuccessful,
-#            notes = SensorRetrieveNotes,
-#             Survey123_LastEditedDate = Survey123_LastEditedDate.x) %>%
-#     mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
-#                                                DownloadSuccessful =="N" ~ 2,
-#                                                DownloadSuccessful == "NA" ~ 8,
-#                                                is.na(DownloadSuccessful) ~ 9,
-#                                                DownloadSuccessful == "ND" ~ 9),
-#            RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
-#     select(-RetrievalTime, -DownloadSuccessful)
-#   
-#   sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = TRUE)
-# }
+if (any(is.na(sensorRetrieval$SensorIDRet))){
+  print(paste("WARNING! There are", sum(is.na(sensorRetrieval$SensorIDRet)), "records in the sensor retrieval table missing a sensor ID"))
+  print( "These need fixing before the import will run")
+}else{
+  db$SensorRetrieval <- baseSR %>%
+    inner_join(fullVisit.keys, by = c("parentglobalid" = "GlobalID")) %>%
+    inner_join(visit, by = c("parentglobalid" = "globalid")) %>%
+    left_join(SensorDeployment.Xref, by = c("SensorIDRet" = "SensorID")) %>%
+    select(VisitID = ID,
+           GlobalID = globalid,
+           SensorDeploymentID = DeploymentID,
+           IsSensorretrievedID = SensorRetrieved,
+           SensorProblemID = SensorProblem,
+           RetrievalTime,
+           DownloadSuccessful,
+           notes = SensorRetrieveNotes,
+            Survey123_LastEditedDate = Survey123_LastEditedDate.x) %>%
+    mutate(IsDownloadSuccessfulID = case_when( DownloadSuccessful == "Y" ~ 1,
+                                               DownloadSuccessful =="N" ~ 2,
+                                               DownloadSuccessful == "NA" ~ 8,
+                                               is.na(DownloadSuccessful) ~ 9,
+                                               DownloadSuccessful == "ND" ~ 9),
+           RetrievalTimeOfDay= paste("1899-12-30 ",RetrievalTime, ":00", sep = "")) %>%
+    select(-RetrievalTime, -DownloadSuccessful)
+
+  sensorRet.keys <-uploadData(db$SensorRetrieval  , "data.SensorRetrievalAttempt", conn, keep.guid = TRUE)
+}
 
 ## flow discharge activity table
 db$DischargeFlow <- visit %>% 

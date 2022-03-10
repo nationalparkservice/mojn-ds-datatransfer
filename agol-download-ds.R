@@ -7,7 +7,7 @@
 ## Libraries and versions used: libraries specified in Main.R. Additional libraries for this R script: rstudioapi 0.11 
 ################################################################
 
-date_qry <- "DateTime < DATE '2021-10-01'"
+date_qry <- "DateTime < DATE '2022-03-08'"
 
 ## Get a token with a headless account - Warning! You need to know the password!
 token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",
@@ -349,3 +349,4 @@ additionalPhotosExt <- additionalPhotosExt$features$attributes %>%
 ## this line if uncommented can remove all the tem,p "resp." list files and
 ## make it easier to see the tables in the global environment. can be useful for testing or modyfying the code
 # rm(list=ls(pattern="^resp."))
+
