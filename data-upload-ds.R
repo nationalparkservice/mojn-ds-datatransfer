@@ -24,8 +24,8 @@ if (UpdateType == "Master"){
   ExternalOrig <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\"
   ExternalSorted <- photo.dest
   # # date range of survey year (used for external image file path wrangling)
-  surveyYearStart <- "2021_10_01"
-  surveyYearEnd <- "2022_07_01"
+  # surveyYearStart <- "2021_10_01"
+  # surveyYearEnd <- "2022_07_01"
   # # variables for holding the correct spatial reference ( UTM's are using Nad83 datum, dec is WGS84)
   UTMcode11 <-"+init=epsg:26911"
   UTMcode12 <-"+init=epsg:26912"
@@ -35,15 +35,15 @@ if (UpdateType == "Master"){
   
   # # Settings for LOCAL database import:
   # set gdb.path to the location of the downloaded FGDB from AGOL
-  gdb.path <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Input\\MOJN_DS_SpringVisit_v20220307.gdb" 
-  photo.dest <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Output\\Photos"
-  originals.dest <- "C:\\Users\\mlehman\\Documents\\R\\mojn-ds-datatransfer\\Output\\Photos_AGOL"
-  db.params.path <- "C:\\Users\\mlehman\\Documents\\R\\LocalConnectionStrings\\ds-database-conn_local.csv"
+  gdb.path <- here::here("local_testing", "MOJN_DS_SpringVisit.gdb")
+  photo.dest <- here::here("local_testing", "Output", "Photos")
+  originals.dest <- here::here("local_testing", "Output", "Photos_AGOL")
+  db.params.path <- here::here("local_testing", "ds-database-conn.csv")
   ExternalOrig <- "M:\\MONITORING\\_FieldPhotoOriginals_DoNotModify\\"
   ExternalSorted <- photo.dest
   # date range of survey year (used for external image file path wrangling)
-  surveyYearStart <- "2021_10_01"
-  surveyYearEnd <- "2022_07_01"
+  # surveyYearStart <- "2021_10_01"
+  # surveyYearEnd <- "2022_07_01"
   # variables for holding the correct spatial reference (UTM's are using Nad83 datum, decimal is WGS84)
   UTMcode11 <-"+init=epsg:26911"
   UTMcode12 <-"+init=epsg:26912"
@@ -325,7 +325,7 @@ db <- list()
           VisitTypeID = VisitType,
           MonitoringStatusID = Status,
           ProtocolID,
-          Survey123_LastEditedDate = EditDate) %>%
+          Survey123_LastEditedDate) %>%
    mutate(VisitDate = format.Date(StartDateTime, "%Y-%m-%d"),
           StartTime = (paste("1899-12-30", format.Date(StartDateTime, "%H:%M:%S"))),
           DataProcessingLevelID = 1 ) %>%

@@ -7,7 +7,7 @@
 ## Libraries and versions used: libraries specified in Main.R. Additional libraries for this R script: rstudioapi 0.11 
 ################################################################
 
-date_qry <- "DateTime < DATE '2022-03-08'"
+date_qry <- "DateTime < DATE '2022-06-07'"
 
 ## Get a token with a headless account - Warning! You need to know the password!
 token_resp <- POST("https://nps.maps.arcgis.com/sharing/rest/generateToken",

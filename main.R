@@ -13,8 +13,8 @@
 
 
 ## Uncomment one of the following Python installations (mel 3/9/2022)
-#Sys.setenv(RETICULATE_PYTHON = "C:\\Program Files\\ArcGIS\\Pro\\bin\\Python\\envs\\arcgispro-py3")
-Sys.setenv(RETICULATE_PYTHON = "C:\\Python27\\ArcGISx6410.8")
+Sys.setenv(RETICULATE_PYTHON = "C:/Program Files/ArcGIS/Pro/bin/Python/envs/arcgispro-py3")
+# Sys.setenv(RETICULATE_PYTHON = "C:\\Python27\\ArcGISx6410.8")
 
 library(reticulate)
 
@@ -36,4 +36,4 @@ source("data-upload-ds.R")
 #check the python path
 repl_python()
 #check ArcPy works!
-import("arcpy")
+import("arcpy")  # If this breaks, try updating reticulate package to latest version
